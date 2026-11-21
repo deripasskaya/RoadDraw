@@ -70,8 +70,8 @@
     var host = location.hostname;
     var parts = location.pathname.split("/").filter(Boolean);
 
-    if (host.slice(-11) === ".github.io") {
-      var owner = host.slice(0, -11);
+    if (host.slice(-10) === ".github.io") {
+      var owner = host.slice(0, -10);
       var repo = parts.length ? parts[0] : host;
       return owner + "/" + repo;
     }
