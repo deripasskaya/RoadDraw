@@ -14,12 +14,7 @@
 
   var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  var FALLBACK_CARS = [
-    { file: "assets/cars/car-red.svg", name: "Красная машинка", facing: "right" },
-    { file: "assets/cars/bus-yellow.svg", name: "Жёлтый автобус", facing: "right" },
-    { file: "assets/cars/car-green.svg", name: "Зелёная машинка", facing: "left" },
-    { file: "assets/cars/moto.svg", name: "Мотоцикл", facing: "right" }
-  ];
+  var FALLBACK_CARS = [];
 
   var cars = [];
   var library = [];
@@ -122,7 +117,7 @@
 
   function loadLibrary(force) {
     return fetchManifest().then(function (list) {
-      if (!Array.isArray(list) || !list.length) list = FALLBACK_CARS;
+      if (!Array.isArray(list)) list = FALLBACK_CARS;
 
       var sig = JSON.stringify(list);
       if (!force && sig === manifestSig) return { changed: false, added: 0 };
@@ -181,10 +176,20 @@
 
   function refreshLibrary() {
     loadLibrary().then(function (res) {
+      updateHint();
+
       if (res && res.changed && res.added > 0) {
         toast(res.added === 1 ? "На дороге новая машина!" : "На дороге новые машины!");
       }
     });
+  }
+
+  function updateHint() {
+    if (!hintEl) return;
+
+    hintEl.textContent = library.length
+      ? "Нажми на машинку — она посигналит"
+      : "Пока машин нет";
   }
 
   function toast(text) {
@@ -778,21 +783,17 @@
   resize();
 
   loadLibrary(true).then(function () {
-    if (!library.length) {
-      ctx.fillStyle = "#1f2937";
-      ctx.font = "600 18px system-ui, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("Не удалось загрузить машинки", W / 2, H / 2);
-      return;
-    }
+    updateHint();
 
     /* Первые машины — сразу на дороге, чтобы сцена не была пустой */
-    var starts = [0.18, 0.62];
-    for (var li = 0; li < lanes.length; li++) {
-      for (var si = 0; si < starts.length; si++) {
-        spawn(lanes[li]);
-        var car = cars[cars.length - 1];
-        car.x = W * starts[si] - car.w / 2;
+    if (library.length) {
+      var starts = [0.18, 0.62];
+      for (var li = 0; li < lanes.length; li++) {
+        for (var si = 0; si < starts.length; si++) {
+          spawn(lanes[li]);
+          var car = cars[cars.length - 1];
+          car.x = W * starts[si] - car.w / 2;
+        }
       }
     }
 

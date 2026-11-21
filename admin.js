@@ -260,43 +260,60 @@
     });
   }
 
-  function sampleBackground(px, w, h) {
-    var corners = [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]];
-    var sum = [0, 0, 0];
-    var n = 0;
+  function luma(r, g, b) {
+    return 0.299 * r + 0.587 * g + 0.114 * b;
+  }
 
-    for (var p = 0; p < corners.length; p++) {
-      var cx = corners[p][0];
-      var cy = corners[p][1];
+  /* Цвет фона берём по медиане пикселей у всех четырёх краёв:
+     так он не зависит от одного тёмного угла и от тени. */
+  function analyzeBorder(px, w, h) {
+    var samples = [];
+    var step = Math.max(1, Math.round(Math.min(w, h) / 120));
 
-      for (var dy = -3; dy <= 3; dy++) {
-        for (var dx = -3; dx <= 3; dx++) {
-          var x = Math.min(w - 1, Math.max(0, cx + dx));
-          var y = Math.min(h - 1, Math.max(0, cy + dy));
-          var o = (y * w + x) * 4;
-          if (px[o + 3] < 16) continue;
-
-          sum[0] += px[o];
-          sum[1] += px[o + 1];
-          sum[2] += px[o + 2];
-          n++;
-        }
-      }
+    function add(x, y) {
+      var o = (y * w + x) * 4;
+      if (px[o + 3] < 16) return;
+      samples.push([px[o], px[o + 1], px[o + 2]]);
     }
 
-    if (!n) return [255, 255, 255];
-    return [sum[0] / n, sum[1] / n, sum[2] / n];
+    for (var x = 0; x < w; x += step) {
+      add(x, 0);
+      add(x, h - 1);
+    }
+    for (var y = 0; y < h; y += step) {
+      add(0, y);
+      add(w - 1, y);
+    }
+
+    if (!samples.length) {
+      return { bg: [255, 255, 255], spread: 0 };
+    }
+
+    var bg = [0, 0, 0];
+
+    for (var ch = 0; ch < 3; ch++) {
+      var vals = [];
+      for (var i = 0; i < samples.length; i++) vals.push(samples[i][ch]);
+      vals.sort(function (a, b) { return a - b; });
+      bg[ch] = vals[Math.floor(vals.length / 2)];
+    }
+
+    var dists = [];
+    for (var j = 0; j < samples.length; j++) {
+      var dr = samples[j][0] - bg[0];
+      var dg = samples[j][1] - bg[1];
+      var db = samples[j][2] - bg[2];
+      dists.push(Math.sqrt(dr * dr + dg * dg + db * db));
+    }
+    dists.sort(function (a, b) { return a - b; });
+
+    return {
+      bg: bg,
+      spread: dists[Math.floor(dists.length * 0.75)]
+    };
   }
 
-  function isLight(r, g, b) {
-    return 0.299 * r + 0.587 * g + 0.114 * b >= 192;
-  }
-
-  function removeBackground(px, w, h, tolPercent) {
-    var bg = sampleBackground(px, w, h);
-    var bgLight = isLight(bg[0], bg[1], bg[2]);
-    var tol = 30 + Math.max(0, Math.min(100, tolPercent)) * 1.1;
-    var tol2 = tol * tol;
+  function floodFromBorder(px, w, h, bg, tol2) {
     var total = w * h;
     var seen = new Uint8Array(total);
     var stack = new Int32Array(total);
@@ -316,95 +333,86 @@
       stack[sp++] = i;
     }
 
-    if (bgLight) {
-      for (var x = 0; x < w; x++) {
-        push(x);
-        push((h - 1) * w + x);
-      }
-      for (var y = 0; y < h; y++) {
-        push(y * w);
-        push(y * w + w - 1);
-      }
-
-      while (sp > 0) {
-        var i = stack[--sp];
-        px[i * 4 + 3] = 0;
-        removed++;
-
-        var ix = i % w;
-        var iy = (i / w) | 0;
-
-        if (ix > 0) push(i - 1);
-        if (ix < w - 1) push(i + 1);
-        if (iy > 0) push(i - w);
-        if (iy < h - 1) push(i + w);
-      }
+    for (var x = 0; x < w; x++) {
+      push(x);
+      push((h - 1) * w + x);
+    }
+    for (var y = 0; y < h; y++) {
+      push(y * w);
+      push(y * w + w - 1);
     }
 
-    /* Если лист не касается краёв кадра — ищем самый большой светлый участок */
-    if (removed < total * 0.005) {
-      removed += removeLargestLightArea(px, w, h);
+    while (sp > 0) {
+      var i = stack[--sp];
+      px[i * 4 + 3] = 0;
+      removed++;
+
+      var ix = i % w;
+      var iy = (i / w) | 0;
+
+      if (ix > 0) push(i - 1);
+      if (ix < w - 1) push(i + 1);
+      if (iy > 0) push(i - w);
+      if (iy < h - 1) push(i + w);
     }
 
-    /* Убираем светлую кайму по краю рисунка */
-    for (var yy = 0; yy < h; yy++) {
-      for (var xx = 0; xx < w; xx++) {
-        var idx = yy * w + xx;
-        var oo = idx * 4;
-
-        if (px[oo + 3] === 0) continue;
-        if (px[oo] < 228 || px[oo + 1] < 228 || px[oo + 2] < 228) continue;
-
-        var edge =
-          (xx > 0 && px[(idx - 1) * 4 + 3] === 0) ||
-          (xx < w - 1 && px[(idx + 1) * 4 + 3] === 0) ||
-          (yy > 0 && px[(idx - w) * 4 + 3] === 0) ||
-          (yy < h - 1 && px[(idx + w) * 4 + 3] === 0);
-
-        if (edge) px[oo + 3] = 0;
-      }
-    }
-
-    return removed > total * 0.005;
+    return removed;
   }
 
-  function removeLargestLightArea(px, w, h) {
+  /* Если лист лежит на столе и не касается краёв кадра,
+     ищем большой однотонный светлый участок бумаги и убираем
+     только саму бумагу — линии рисунка остаются. */
+  function removeSheet(px, w, h, strict) {
     var total = w * h;
     var seen = new Uint8Array(total);
     var stack = new Int32Array(total);
-    var bestStart = -1;
-    var bestSize = 0;
-    var bestX = 0;
-    var bestY = 0;
-    var bestW = 0;
-    var bestH = 0;
+    var best = null;
+
+    function isClear(i) {
+      return px[i * 4 + 3] < 16;
+    }
 
     function isPaper(i) {
       var o = i * 4;
       if (px[o + 3] < 16) return false;
-      if (!isLight(px[o], px[o + 1], px[o + 2])) return false;
 
-      var diff = Math.max(px[o], px[o + 1], px[o + 2]) - Math.min(px[o], px[o + 1], px[o + 2]);
-      return diff <= 38;
+      var r = px[o];
+      var g = px[o + 1];
+      var b = px[o + 2];
+      var l = luma(r, g, b);
+
+      if (l < 140) return false;
+
+      var mx = Math.max(r, g, b);
+      var mn = Math.min(r, g, b);
+      return mx - mn <= 70;
     }
 
     for (var start = 0; start < total; start++) {
-      if (seen[start]) continue;
+      if (seen[start] || !isPaper(start)) continue;
       seen[start] = 1;
-      if (!isPaper(start)) continue;
 
       var sp = 0;
       stack[sp++] = start;
 
       var size = 0;
+      var sumR = 0;
+      var sumG = 0;
+      var sumB = 0;
       var minX = w;
       var maxX = -1;
       var minY = h;
       var maxY = -1;
+      var touchesClear = false;
 
       while (sp > 0) {
         var i = stack[--sp];
+        var o = i * 4;
+
         size++;
+        sumR += px[o];
+        sumG += px[o + 1];
+        sumB += px[o + 2];
 
         var ix = i % w;
         var iy = (i / w) | 0;
@@ -414,38 +422,58 @@
         if (iy < minY) minY = iy;
         if (iy > maxY) maxY = iy;
 
-        if (ix > 0) add(i - 1);
-        if (ix < w - 1) add(i + 1);
-        if (iy > 0) add(i - w);
-        if (iy < h - 1) add(i + w);
+        if (ix === 0 || iy === 0 || ix === w - 1 || iy === h - 1) {
+          touchesClear = true;
+        }
+
+        add(i - 1, ix > 0);
+        add(i + 1, ix < w - 1);
+        add(i - w, iy > 0);
+        add(i + w, iy < h - 1);
       }
 
-      if (size > bestSize) {
-        bestSize = size;
-        bestStart = start;
-        bestX = minX;
-        bestY = minY;
-        bestW = maxX - minX + 1;
-        bestH = maxY - minY + 1;
+      function add(j, ok) {
+        if (!ok || seen[j]) return;
+        seen[j] = 1;
+        if (isClear(j)) {
+          touchesClear = true;
+          return;
+        }
+        if (!isPaper(j)) return;
+        stack[sp++] = j;
+      }
+
+      if (!strict && !touchesClear) continue;
+
+      var bw = maxX - minX + 1;
+      var bh = maxY - minY + 1;
+
+      var minSize = strict ? 0.12 : 0.3;
+      var minW = strict ? 0.4 : 0.6;
+      var minH = strict ? 0.4 : 0.6;
+
+      if (size < total * minSize) continue;
+      if (bw < w * minW || bh < h * minH) continue;
+
+      if (!best || size > best.size) {
+        best = {
+          size: size,
+          start: start,
+          x: minX,
+          y: minY,
+          w: bw,
+          h: bh,
+          color: [sumR / size, sumG / size, sumB / size]
+        };
       }
     }
 
-    function add(i) {
-      if (seen[i]) return;
-      seen[i] = 1;
-      if (!isPaper(i)) return;
-      stack[sp++] = i;
-    }
+    if (!best) return null;
 
-    if (bestStart < 0) return 0;
-    if (bestSize < total * 0.12) return 0;
-    if (bestW < w * 0.45 || bestH < h * 0.45) return 0;
-
-    /* Удаляем найденный лист */
     var done = new Uint8Array(total);
     var sp2 = 0;
-    stack[sp2++] = bestStart;
-    done[bestStart] = 1;
+    stack[sp2++] = best.start;
+    done[best.start] = 1;
 
     var count = 0;
 
@@ -466,16 +494,16 @@
     function add2(i) {
       if (done[i]) return;
       done[i] = 1;
-      if (!isPaper(i)) return;
+      if (isClear(i) || !isPaper(i)) return;
       stack[sp2++] = i;
     }
 
-    /* Всё за пределами листа (стол, фон) и кромку листа убираем */
-    var inset = Math.max(4, Math.round(Math.min(bestW, bestH) * 0.015));
-    var x0 = bestX + inset;
-    var y0 = bestY + inset;
-    var x1 = bestX + bestW - inset;
-    var y1 = bestY + bestH - inset;
+    /* Всё за пределами листа тоже убираем */
+    var inset = Math.max(3, Math.round(Math.min(best.w, best.h) * 0.01));
+    var x0 = best.x + inset;
+    var y0 = best.y + inset;
+    var x1 = best.x + best.w - inset;
+    var y1 = best.y + best.h - inset;
 
     for (var yy = 0; yy < h; yy++) {
       for (var xx = 0; xx < w; xx++) {
@@ -485,7 +513,100 @@
       }
     }
 
-    return count;
+    return { count: count, color: best.color };
+  }
+
+  /* Убираем кайму цвета бумаги, оставшуюся по контуру рисунка */
+  function cleanFringe(px, w, h, bg, tol) {
+    var limit = Math.max(45, tol * 1.1);
+    var limit2 = limit * limit;
+
+    for (var pass = 0; pass < 2; pass++) {
+      var toClear = [];
+
+      for (var y = 0; y < h; y++) {
+        for (var x = 0; x < w; x++) {
+          var i = y * w + x;
+          var o = i * 4;
+          if (px[o + 3] === 0) continue;
+
+          var edge =
+            (x > 0 && px[(i - 1) * 4 + 3] === 0) ||
+            (x < w - 1 && px[(i + 1) * 4 + 3] === 0) ||
+            (y > 0 && px[(i - w) * 4 + 3] === 0) ||
+            (y < h - 1 && px[(i + w) * 4 + 3] === 0);
+
+          if (!edge) continue;
+
+          var dr = px[o] - bg[0];
+          var dg = px[o + 1] - bg[1];
+          var db = px[o + 2] - bg[2];
+
+          if (dr * dr + dg * dg + db * db <= limit2) toClear.push(o);
+        }
+      }
+
+      if (!toClear.length) break;
+      for (var k = 0; k < toClear.length; k++) px[toClear[k] + 3] = 0;
+    }
+  }
+
+  /* Бумага внутри рисунка тоже может быть сероватой — мягко отбеливаем её */
+  function whitenPaper(px, w, h, bg, tol) {
+    var limit = Math.min(36, tol * 0.42);
+    var limit2 = limit * limit;
+
+    for (var i = 0; i < w * h; i++) {
+      var o = i * 4;
+      if (px[o + 3] < 16) continue;
+
+      var dr = px[o] - bg[0];
+      var dg = px[o + 1] - bg[1];
+      var db = px[o + 2] - bg[2];
+      var d2 = dr * dr + dg * dg + db * db;
+
+      if (d2 >= limit2) continue;
+
+      var t = 1 - Math.sqrt(d2) / limit;
+      t = t * t;
+
+      px[o] += (255 - px[o]) * t;
+      px[o + 1] += (255 - px[o + 1]) * t;
+      px[o + 2] += (255 - px[o + 2]) * t;
+    }
+  }
+
+  function removeBackground(px, w, h, tolPercent) {
+    var border = analyzeBorder(px, w, h);
+    var bg = border.bg;
+    var slider = Math.max(0, Math.min(100, tolPercent));
+    var tol = 25 + slider * 1.2;
+    var tol2 = tol * tol;
+    var total = w * h;
+
+    var removed = floodFromBorder(px, w, h, bg, tol2);
+    var paperColor = bg;
+
+    if (removed < total * 0.01) {
+      /* Фон пёстрый или лист не касается краёв — ищем сам лист */
+      var sheet = removeSheet(px, w, h, true);
+      if (sheet) {
+        removed += sheet.count;
+        paperColor = sheet.color;
+      }
+    } else {
+      /* Стол уже убран, но лист мог остаться прямоугольником */
+      var sheet2 = removeSheet(px, w, h, false);
+      if (sheet2) {
+        removed += sheet2.count;
+        paperColor = sheet2.color;
+      }
+    }
+
+    cleanFringe(px, w, h, paperColor, tol);
+    whitenPaper(px, w, h, paperColor, tol);
+
+    return removed > total * 0.01;
   }
 
   function alphaBounds(px, w, h) {
@@ -539,7 +660,7 @@
     if (removeBg) {
       var ok = removeBackground(px, w, h, tolPercent);
       if (!ok) {
-        warning = "Фон не белый — сфотографируйте рисунок на белом листе.";
+        warning = "Не удалось отделить фон. Сфотографируйте рисунок на однотонном листе покрупнее.";
       }
       c.putImageData(data, 0, 0);
     }
