@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#bfe8fb">
+  <title>Дорога — машинки едут</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <canvas id="scene" aria-label="Дорога, по которой едут машинки"></canvas>
+
+  <div class="hud">
+    <label class="speed" title="Скорость потока">
+      <span aria-hidden="true">🐢</span>
+      <input id="speed" type="range" min="0.4" max="2" step="0.1" value="1" aria-label="Скорость потока">
+      <span aria-hidden="true">🐇</span>
+    </label>
+    <button id="sound" type="button" aria-label="Выключить звук" aria-pressed="true" title="Звук">🔊</button>
+    <button id="pause" type="button" aria-label="Пауза" title="Пауза">⏸</button>
+  </div>
+
+  <div id="hint" class="hint">Нажми на машинку — она посигналит</div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="game.js"></script>
+</body>
+</html>

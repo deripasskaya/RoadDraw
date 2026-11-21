@@ -1,0 +1,6 @@
+[
+  { "file": "assets/cars/car-red.svg", "name": "Красная машинка", "facing": "right" },
+  { "file": "assets/cars/bus-yellow.svg", "name": "Жёлтый автобус", "facing": "right" },
+  { "file": "assets/cars/car-green.svg", "name": "Зелёная машинка", "facing": "left" },
+  { "file": "assets/cars/moto.svg", "name": "Мотоцикл", "facing": "right" }
+]

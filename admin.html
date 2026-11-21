@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#eef3f8">
+  <title>Добавить машину — Дорога</title>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="back" href="index.html" aria-label="Вернуться к игре">←</a>
+    <h1>Добавить машину</h1>
+    <button id="settingsBtn" class="icon-btn" type="button" aria-label="Настройки" title="Настройки">⚙️</button>
+  </header>
+
+  <main>
+    <section id="settings" class="card settings">
+      <div class="card-head">
+        <div>
+          <h2>Подключение к GitHub</h2>
+          <p id="connectionState" class="muted">Проверьте данные репозитория и токен.</p>
+        </div>
+        <button id="toggleSettings" class="link-btn" type="button" aria-expanded="true">Свернуть</button>
+      </div>
+
+      <div id="settingsBody">
+        <label class="field">
+          <span>Репозиторий</span>
+          <input id="repoInput" type="text" placeholder="логин/репозиторий" autocomplete="off" spellcheck="false">
+        </label>
+
+        <div class="field-row">
+          <label class="field">
+            <span>Ветка</span>
+            <input id="branchInput" type="text" value="main" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="field grow">
+            <span>Токен</span>
+            <input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false">
+          </label>
+        </div>
+
+        <div class="row">
+          <button id="saveSettings" class="primary" type="button">Сохранить</button>
+          <button id="logoutBtn" class="ghost" type="button">Забыть токен</button>
+        </div>
+
+        <p id="settingsStatus" class="status" role="status"></p>
+
+        <details class="help">
+          <summary>Как получить токен</summary>
+          <ol>
+            <li>Откройте github.com → <b>Settings</b> → <b>Developer settings</b> → <b>Personal access tokens</b> → <b>Fine-grained tokens</b>.</li>
+            <li>Нажмите <b>Generate new token</b>.</li>
+            <li>В <b>Repository access</b> выберите <b>Only select repositories</b> и укажите репозиторий с игрой.</li>
+            <li>В <b>Repository permissions</b> найдите <b>Contents</b> и поставьте <b>Read and write</b>.</li>
+            <li>Создайте токен и скопируйте его сюда.</li>
+          </ol>
+          <p class="muted">Токен хранится только в этом браузере и не попадает в код сайта. На чужом компьютере не сохраняйте его.</p>
+        </details>
+      </div>
+    </section>
+
+    <section id="uploadCard" class="card">
+      <label class="pick" for="fileInput" id="pickLabel">
+        <span class="pick-icon" aria-hidden="true">📷</span>
+        <span class="pick-title">Сфотографировать или выбрать рисунок</span>
+        <span class="pick-hint">Лучше, если белый лист занимает весь кадр</span>
+      </label>
+      <input id="fileInput" type="file" accept="image/*" multiple hidden>
+
+      <div class="options">
+        <label class="check">
+          <input id="removeBg" type="checkbox" checked>
+          <span>Убрать белый фон</span>
+        </label>
+        <label class="tol">
+          <span>Чувствительность</span>
+          <input id="tolerance" type="range" min="0" max="100" step="5" value="50">
+        </label>
+      </div>
+
+      <div id="list" class="list"></div>
+      <p class="list-hint muted">Нос машины на превью должен смотреть вправо. Если он смотрит влево — нажмите «Отразить».</p>
+
+      <div id="actions" class="actions" hidden>
+        <button id="addBtn" class="primary big" type="button">Добавить на дорогу</button>
+      </div>
+
+      <p id="status" class="status" role="status"></p>
+    </section>
+
+    <section id="doneCard" class="card done" hidden>
+      <div class="done-icon" aria-hidden="true">🎉</div>
+      <h2>Готово!</h2>
+      <p id="doneText"></p>
+      <p class="muted">GitHub пересобирает сайт. Игра на компьютере подхватит новые машины сама — обычно в течение минуты.</p>
+      <div class="row">
+        <a class="primary as-button" href="index.html">Открыть игру</a>
+        <button id="againBtn" class="ghost" type="button">Добавить ещё</button>
+      </div>
+    </section>
+
+    <p class="footnote">Страница никуда не ссылается с игры. Без токена она не может ничего изменить в репозитории.</p>
+  </main>
+
+  <script src="admin.js"></script>
+</body>
+</html>
