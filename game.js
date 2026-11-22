@@ -155,6 +155,7 @@
   function clearCars() {
     cars.length = 0;
     toast("Дорога очищена");
+    if (!running) draw();
   }
 
   function libraryItem(item) {
