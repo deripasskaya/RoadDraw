@@ -418,8 +418,8 @@
     ctx.quadraticCurveTo(W * 0.16, y - 34, W * 0.36, y + 6);
     ctx.quadraticCurveTo(W * 0.54, y + 38, W * 0.72, y - 4);
     ctx.quadraticCurveTo(W * 0.88, y - 36, W, y + 10);
-    ctx.lineTo(W, G.sidewalkTop + 4);
-    ctx.lineTo(0, G.sidewalkTop + 4);
+    ctx.lineTo(W, G.roadTop);
+    ctx.lineTo(0, G.roadTop);
     ctx.closePath();
     ctx.fill();
 
@@ -429,36 +429,20 @@
     ctx.quadraticCurveTo(W * 0.22, y + 16, W * 0.44, y + 44);
     ctx.quadraticCurveTo(W * 0.66, y + 70, W * 0.86, y + 30);
     ctx.quadraticCurveTo(W * 0.95, y + 14, W, y + 34);
-    ctx.lineTo(W, G.sidewalkTop + 4);
-    ctx.lineTo(0, G.sidewalkTop + 4);
+    ctx.lineTo(W, G.roadTop);
+    ctx.lineTo(0, G.roadTop);
     ctx.closePath();
     ctx.fill();
   }
 
-  function drawSidewalk() {
-    var top = G.sidewalkTop;
-    var bottom = G.roadTop;
-    var h = bottom - top;
+  function drawCurb() {
+    var y = G.roadTop;
 
-    ctx.fillStyle = "#d7dde4";
-    ctx.fillRect(0, top, W, h);
-
-    /* Плитка */
-    ctx.strokeStyle = "rgba(90, 110, 130, 0.16)";
-    ctx.lineWidth = 1;
-    var step = Math.max(46, h * 1.4);
-    for (var x = 0; x < W; x += step) {
-      ctx.beginPath();
-      ctx.moveTo(x, top);
-      ctx.lineTo(x, bottom);
-      ctx.stroke();
-    }
-
-    /* Бордюр */
+    /* Узкий бордюр у дороги вместо тротуара с «забором» */
     ctx.fillStyle = "#eef2f6";
-    ctx.fillRect(0, bottom - 7, W, 7);
+    ctx.fillRect(0, y - 7, W, 7);
     ctx.fillStyle = "#98a2ad";
-    ctx.fillRect(0, bottom - 1, W, 1.5);
+    ctx.fillRect(0, y - 1, W, 1.5);
   }
 
   function drawTrees() {
@@ -631,7 +615,7 @@
 
     drawSky(t);
     drawHills();
-    drawSidewalk();
+    drawCurb();
     drawTrees();
     drawRoad();
 
