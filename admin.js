@@ -133,6 +133,7 @@
   function gh(method, path, body, token) {
     return fetch("https://api.github.com" + path, {
       method: method,
+      cache: "no-store",
       headers: {
         "Authorization": "Bearer " + token,
         "Accept": "application/vnd.github+json",
@@ -1030,37 +1031,57 @@
     updateActions();
     setStatus("Читаю текущий список машин…");
 
+    var word = plural(ready.length, "машину", "машины", "машин");
+    var entries = [];
+    var attempts = 3;
+
     try {
-      var manifest = await readManifest();
-      var files = [];
-      var entries = [];
-      var stamp = Date.now().toString(36);
+      for (var attempt = 1; attempt <= attempts; attempt++) {
+        try {
+          var manifest = await readManifest();
+          var files = [];
+          entries = [];
+          var stamp = Date.now().toString(36) + "-" + attempt;
 
-      ready.forEach(function (item, index) {
-        var id = "car-" + stamp + "-" + (index + 1) + "-" + Math.random().toString(36).slice(2, 5);
-        var path = "assets/cars/" + id + ".png";
+          ready.forEach(function (item, index) {
+            var id = "car-" + stamp + "-" + (index + 1) + "-" + Math.random().toString(36).slice(2, 5);
+            var path = "assets/cars/" + id + ".png";
 
-        files.push({ path: path, base64: item.result.dataUrl.split(",")[1] });
-        entries.push({
-          file: path,
-          name: cleanName(item.name),
-          facing: item.flip ? "left" : "right"
-        });
-      });
+            files.push({ path: path, base64: item.result.dataUrl.split(",")[1] });
+            entries.push({
+              file: path,
+              name: cleanName(item.name),
+              facing: item.flip ? "left" : "right"
+            });
+          });
 
-      var next = manifest.concat(entries);
-      files.push({
-        path: "cars.json",
-        base64: b64Utf8(JSON.stringify(next, null, 2) + "\n")
-      });
+          var next = manifest.concat(entries);
+          files.push({
+            path: "cars.json",
+            base64: b64Utf8(JSON.stringify(next, null, 2) + "\n")
+          });
 
-      var word = plural(ready.length, "машину", "машины", "машин");
-      setStatus("Загружаю " + ready.length + " " + word + "…");
+          setStatus(attempt === 1
+            ? "Загружаю " + ready.length + " " + word + "…"
+            : "Ветка изменилась, повторяю загрузку…");
 
-      await commitFiles(
-        files,
-        "Добавить " + word + ": " + entries.map(function (e) { return e.name; }).join(", ")
-      );
+          await commitFiles(
+            files,
+            "Добавить " + word + ": " + entries.map(function (e) { return e.name; }).join(", ")
+          );
+
+          break;
+        } catch (e) {
+          var conflict = e.status === 409 || e.status === 422;
+
+          if (conflict && attempt < attempts) {
+            await new Promise(function (resolve) { setTimeout(resolve, 700 * attempt); });
+            continue;
+          }
+
+          throw e;
+        }
+      }
 
       ready.forEach(function (item) {
         removeItem(item);
@@ -1101,20 +1122,37 @@
     updateActions();
     setRoadStatus("Очищаю дорогу…");
 
+    var attempts = 3;
+
     try {
-      var manifest = await readManifest();
+      for (var attempt = 1; attempt <= attempts; attempt++) {
+        try {
+          var manifest = await readManifest();
 
-      if (!manifest.length) {
-        setRoadStatus("Дорога уже пустая.", "ok");
-        return;
+          if (!manifest.length) {
+            setRoadStatus("Дорога уже пустая.", "ok");
+            return;
+          }
+
+          await commitFiles(
+            [{ path: "cars.json", base64: b64Utf8("[]\n") }],
+            "Очистить дорогу"
+          );
+
+          setRoadStatus("Дорога очищена. Игра обновится в течение минуты.", "ok");
+          return;
+        } catch (e) {
+          var conflict = e.status === 409 || e.status === 422;
+
+          if (conflict && attempt < attempts) {
+            setRoadStatus("Ветка изменилась, повторяю…");
+            await new Promise(function (resolve) { setTimeout(resolve, 700 * attempt); });
+            continue;
+          }
+
+          throw e;
+        }
       }
-
-      await commitFiles(
-        [{ path: "cars.json", base64: b64Utf8("[]\n") }],
-        "Очистить дорогу"
-      );
-
-      setRoadStatus("Дорога очищена. Игра обновится в течение минуты.", "ok");
     } catch (e) {
       setRoadStatus(e.message || "Не удалось очистить дорогу", "error");
     } finally {
