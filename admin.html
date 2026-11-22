@@ -66,7 +66,7 @@
       <label class="pick" for="fileInput" id="pickLabel">
         <span class="pick-icon" aria-hidden="true">📷</span>
         <span class="pick-title">Сфотографировать или выбрать рисунок</span>
-        <span class="pick-hint">Лучше, если белый лист занимает весь кадр</span>
+        <span class="pick-hint">Лучше, если лист бумаги занимает весь кадр</span>
       </label>
       <input id="fileInput" type="file" accept="image/*" multiple hidden>
 
@@ -80,7 +80,7 @@
           <input id="tolerance" type="range" min="0" max="100" step="5" value="50">
         </label>
       </div>
-      <p class="options-hint muted">Если фон остался — увеличьте чувствительность. Если пропали детали рисунка — уменьшите.</p>
+      <p class="options-hint muted">Двигайте ползунок — превью обновится сразу. Если фон остался — увеличьте, если пропали детали — уменьшите.</p>
 
       <div id="list" class="list"></div>
       <p class="list-hint muted">Нос машины на превью должен смотреть вправо. Если он смотрит влево — нажмите «Отразить».</p>
@@ -90,6 +90,17 @@
       </div>
 
       <p id="status" class="status" role="status"></p>
+    </section>
+
+    <section id="roadCard" class="card road-card">
+      <div class="card-head">
+        <div>
+          <h2>Дорога</h2>
+          <p class="muted">Убрать все машины сразу. Рисунки останутся в репозитории — их можно вернуть вручную.</p>
+        </div>
+      </div>
+      <button id="clearRoadBtn" class="ghost danger" type="button">Очистить дорогу</button>
+      <p id="roadStatus" class="status" role="status"></p>
     </section>
 
     <section id="doneCard" class="card done" hidden>

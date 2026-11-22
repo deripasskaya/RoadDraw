@@ -33,6 +33,9 @@
     addBtn: document.getElementById("addBtn"),
     status: document.getElementById("status"),
 
+    clearRoadBtn: document.getElementById("clearRoadBtn"),
+    roadStatus: document.getElementById("roadStatus"),
+
     done: document.getElementById("doneCard"),
     doneText: document.getElementById("doneText"),
     againBtn: document.getElementById("againBtn")
@@ -694,10 +697,19 @@
     octx.imageSmoothingQuality = "high";
     octx.drawImage(canvas, cx, cy, cw, ch, 0, 0, ow, oh);
 
+    var transparent = 0;
+    for (var ty = cy; ty < cy + ch; ty++) {
+      for (var tx = cx; tx < cx + cw; tx++) {
+        if (px[(ty * w + tx) * 4 + 3] < 16) transparent++;
+      }
+    }
+
     return {
       dataUrl: out.toDataURL("image/png"),
       width: ow,
       height: oh,
+      transparentPct: Math.round(transparent / (cw * ch) * 100),
+      cropRatio: (cw * ch) / (w * h),
       warning: warning
     };
   }
@@ -710,6 +722,9 @@
     var el = document.createElement("article");
     el.className = "item";
 
+    var previewWrap = document.createElement("div");
+    previewWrap.className = "preview-wrap";
+
     var preview = document.createElement("div");
     preview.className = "preview";
 
@@ -721,8 +736,31 @@
     ph.className = "placeholder";
     ph.textContent = "Загрузка…";
 
+    var badge = document.createElement("span");
+    badge.className = "preview-badge";
+    badge.hidden = true;
+
+    var toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "preview-toggle";
+    toggle.textContent = "На дороге";
+    toggle.hidden = true;
+    toggle.addEventListener("click", function () {
+      item.showRoad = !item.showRoad;
+      updatePreviewStyle(item);
+    });
+
     preview.appendChild(img);
     preview.appendChild(ph);
+    preview.appendChild(badge);
+    preview.appendChild(toggle);
+
+    var caption = document.createElement("span");
+    caption.className = "preview-caption";
+    caption.textContent = "Шахматка — прозрачный фон";
+
+    previewWrap.appendChild(preview);
+    previewWrap.appendChild(caption);
 
     var fields = document.createElement("div");
     fields.className = "fields";
@@ -767,17 +805,41 @@
     fields.appendChild(acts);
     fields.appendChild(st);
 
-    el.appendChild(preview);
+    el.appendChild(previewWrap);
     el.appendChild(fields);
 
     item.el = el;
+    item.preview = preview;
     item.previewImg = img;
+    item.previewBadge = badge;
+    item.previewToggle = toggle;
     item.placeholder = ph;
     item.flipBtn = flip;
     item.statusEl = st;
 
+    updatePreviewStyle(item);
+
     els.list.appendChild(el);
     updateItem(item);
+  }
+
+  function updatePreviewStyle(item) {
+    if (!item.preview) return;
+
+    item.preview.classList.toggle("is-road", !!item.showRoad);
+    item.previewToggle.textContent = item.showRoad ? "Прозрачность" : "На дороге";
+    item.previewToggle.setAttribute("aria-pressed", item.showRoad ? "true" : "false");
+  }
+
+  /* Фон считается убранным, если прозрачна половина картинки
+     или если от кадра остался заметно меньший фрагмент. */
+  function backgroundLooksRemoved(item) {
+    if (!item.result) return false;
+
+    var pct = item.result.transparentPct || 0;
+    var crop = typeof item.result.cropRatio === "number" ? item.result.cropRatio : 1;
+
+    return pct >= 50 || crop < 0.75;
   }
 
   function updateItem(item) {
@@ -799,9 +861,32 @@
     item.flipBtn.disabled = !item.result;
     item.el.classList.toggle("is-error", item.status === "error");
 
+    if (item.previewToggle) item.previewToggle.hidden = !item.result;
+
+    var bgOk = backgroundLooksRemoved(item);
+
+    if (item.previewBadge) {
+      if (item.result && bgOk) {
+        item.previewBadge.textContent = "Фон прозрачный";
+        item.previewBadge.className = "preview-badge ok";
+        item.previewBadge.hidden = false;
+      } else if (item.result && els.removeBg.checked) {
+        item.previewBadge.textContent = "Фон не убран";
+        item.previewBadge.className = "preview-badge warn";
+        item.previewBadge.hidden = false;
+      } else {
+        item.previewBadge.hidden = true;
+      }
+    }
+
     var msg = "";
-    if (item.status === "error") msg = item.error || "Ошибка";
-    else if (item.status === "ready" && item.result && item.result.warning) msg = item.result.warning;
+    if (item.status === "error") {
+      msg = item.error || "Ошибка";
+    } else if (item.status === "ready" && item.result && item.result.warning) {
+      msg = item.result.warning;
+    } else if (item.status === "ready" && item.result && els.removeBg.checked && !bgOk) {
+      msg = "Фон не убран — увеличьте чувствительность.";
+    }
 
     item.statusEl.textContent = msg;
     item.statusEl.className = "item-status" + (item.status === "error" ? " error" : "");
@@ -869,6 +954,7 @@
         file: files[i],
         name: "Машина",
         flip: false,
+        showRoad: false,
         status: "loading",
         result: null,
         img: null,
@@ -899,8 +985,9 @@
 
     els.actions.hidden = state.items.length === 0;
     els.addBtn.disabled = state.busy || ready === 0;
+    els.clearRoadBtn.disabled = state.busy;
 
-    if (state.busy) els.addBtn.textContent = "Загружаю…";
+    if (state.busy) els.addBtn.textContent = "Подождите…";
     else if (ready) els.addBtn.textContent = "Добавить на дорогу (" + ready + ")";
     else els.addBtn.textContent = "Добавить на дорогу";
   }
@@ -997,6 +1084,45 @@
     els.done.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
+  async function clearRoad() {
+    if (state.busy) return;
+
+    if (!state.cfg.token || !state.cfg.owner || !state.cfg.repo) {
+      expandSettings();
+      setSettingsStatus("Сначала подключите GitHub и сохраните токен.", "error");
+      els.settings.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
+    var ok = confirm("Убрать все машины с дороги? Рисунки останутся в репозитории.");
+    if (!ok) return;
+
+    state.busy = true;
+    updateActions();
+    setRoadStatus("Очищаю дорогу…");
+
+    try {
+      var manifest = await readManifest();
+
+      if (!manifest.length) {
+        setRoadStatus("Дорога уже пустая.", "ok");
+        return;
+      }
+
+      await commitFiles(
+        [{ path: "cars.json", base64: b64Utf8("[]\n") }],
+        "Очистить дорогу"
+      );
+
+      setRoadStatus("Дорога очищена. Игра обновится в течение минуты.", "ok");
+    } catch (e) {
+      setRoadStatus(e.message || "Не удалось очистить дорогу", "error");
+    } finally {
+      state.busy = false;
+      updateActions();
+    }
+  }
+
   /* ============================================================
      Статусы
      ============================================================ */
@@ -1009,6 +1135,11 @@
   function setSettingsStatus(text, kind) {
     els.settingsStatus.textContent = text || "";
     els.settingsStatus.className = "status" + (kind ? " " + kind : "");
+  }
+
+  function setRoadStatus(text, kind) {
+    els.roadStatus.textContent = text || "";
+    els.roadStatus.className = "status" + (kind ? " " + kind : "");
   }
 
   /* ============================================================
@@ -1089,6 +1220,7 @@
   });
 
   els.addBtn.addEventListener("click", commitAll);
+  els.clearRoadBtn.addEventListener("click", clearRoad);
 
   els.againBtn.addEventListener("click", function () {
     els.done.hidden = true;

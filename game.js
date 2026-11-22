@@ -14,8 +14,6 @@
 
   var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  var FALLBACK_CARS = [];
-
   var cars = [];
   var library = [];
   var lanes = [];
@@ -117,7 +115,10 @@
 
   function loadLibrary(force) {
     return fetchManifest().then(function (list) {
-      if (!Array.isArray(list)) list = FALLBACK_CARS;
+      /* Сеть недоступна — оставляем то, что уже едет по дороге */
+      if (list === null) return { changed: false, added: 0, failed: true };
+
+      if (!Array.isArray(list)) list = [];
 
       var sig = JSON.stringify(list);
       if (!force && sig === manifestSig) return { changed: false, added: 0 };
@@ -132,6 +133,11 @@
         if (ok.length < items.length) manifestSig = "";
 
         library = ok;
+
+        /* Пустой список — это команда «очистить дорогу»,
+           а не сбой загрузки. */
+        if (!list.length && cars.length) clearCars();
+
         return { changed: true, added: library.length - prev };
       });
     });
@@ -143,7 +149,12 @@
         if (!r.ok) throw new Error("no manifest");
         return r.json();
       })
-      .catch(function () { return FALLBACK_CARS; });
+      .catch(function () { return null; });
+  }
+
+  function clearCars() {
+    cars.length = 0;
+    toast("Дорога очищена");
   }
 
   function libraryItem(item) {
