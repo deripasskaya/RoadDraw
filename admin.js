@@ -580,6 +580,113 @@
     }
   }
 
+  /* Расширяем непрозрачные участки на r пикселей во все стороны */
+  function morphDilate(src, w, h, r) {
+    var tmp = new Uint8Array(w * h);
+    var out = new Uint8Array(w * h);
+
+    for (var y = 0; y < h; y++) {
+      var row = y * w;
+      for (var x = 0; x < w; x++) {
+        var from = Math.max(0, x - r);
+        var to = Math.min(w - 1, x + r);
+        var v = 0;
+        for (var k = from; k <= to; k++) {
+          if (src[row + k]) { v = 1; break; }
+        }
+        tmp[row + x] = v;
+      }
+    }
+
+    for (var x2 = 0; x2 < w; x2++) {
+      for (var y2 = 0; y2 < h; y2++) {
+        var from2 = Math.max(0, y2 - r);
+        var to2 = Math.min(h - 1, y2 + r);
+        var v2 = 0;
+        for (var k2 = from2; k2 <= to2; k2++) {
+          if (tmp[k2 * w + x2]) { v2 = 1; break; }
+        }
+        out[y2 * w + x2] = v2;
+      }
+    }
+
+    return out;
+  }
+
+  /* Морфологическое закрытие: заделывает узкие разрывы в обводке */
+  function morphClose(mask, w, h, r) {
+    var grown = morphDilate(mask, w, h, r);
+    var inv = new Uint8Array(w * h);
+
+    for (var i = 0; i < inv.length; i++) inv[i] = grown[i] ? 0 : 1;
+
+    var grownInv = morphDilate(inv, w, h, r);
+    for (var j = 0; j < grownInv.length; j++) grownInv[j] = grownInv[j] ? 0 : 1;
+
+    return grownInv;
+  }
+
+  /* Незакрашенные места внутри рисунка (дырки, не связанные с внешним
+     фоном) заливаем белым. Иначе через них просвечивает фон игры.
+     Небольшие разрывы обводки перед этим заделываем, чтобы заливка
+     не «утекла» наружу. */
+  function fillInteriorHoles(px, w, h) {
+    var total = w * h;
+    var mask = new Uint8Array(total);
+
+    for (var i = 0; i < total; i++) {
+      if (px[i * 4 + 3] >= 16) mask[i] = 1;
+    }
+
+    var r = Math.max(2, Math.min(5, Math.round(Math.min(w, h) / 300)));
+    var closed = morphClose(mask, w, h, r);
+
+    var outside = new Uint8Array(total);
+    var stack = new Int32Array(total);
+    var sp = 0;
+
+    function push(idx) {
+      if (outside[idx] || closed[idx]) return;
+      outside[idx] = 1;
+      stack[sp++] = idx;
+    }
+
+    for (var x = 0; x < w; x++) {
+      push(x);
+      push((h - 1) * w + x);
+    }
+    for (var y = 0; y < h; y++) {
+      push(y * w);
+      push(y * w + w - 1);
+    }
+
+    while (sp > 0) {
+      var idx2 = stack[--sp];
+      var ix = idx2 % w;
+      var iy = (idx2 / w) | 0;
+
+      if (ix > 0) push(idx2 - 1);
+      if (ix < w - 1) push(idx2 + 1);
+      if (iy > 0) push(idx2 - w);
+      if (iy < h - 1) push(idx2 + w);
+    }
+
+    var filled = 0;
+
+    for (var k = 0; k < total; k++) {
+      if (px[k * 4 + 3] >= 16 || outside[k]) continue;
+
+      var o = k * 4;
+      px[o] = 255;
+      px[o + 1] = 255;
+      px[o + 2] = 255;
+      px[o + 3] = 255;
+      filled++;
+    }
+
+    return filled;
+  }
+
   function removeBackground(px, w, h, tolPercent) {
     var border = analyzeBorder(px, w, h);
     var bg = border.bg;
@@ -697,6 +804,13 @@
     octx.imageSmoothingEnabled = true;
     octx.imageSmoothingQuality = "high";
     octx.drawImage(canvas, cx, cy, cw, ch, 0, 0, ow, oh);
+
+    /* Повторно заливаем внутренние дырки уже в готовой картинке:
+       при уменьшении тонкие разрывы обводки могут сомкнуться, и тогда
+       незакрашенные места остались бы прозрачными. */
+    var outData = octx.getImageData(0, 0, ow, oh);
+    fillInteriorHoles(outData.data, ow, oh);
+    octx.putImageData(outData, 0, 0);
 
     var transparent = 0;
     for (var ty = cy; ty < cy + ch; ty++) {

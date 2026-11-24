@@ -18,6 +18,9 @@
   var library = [];
   var lanes = [];
   var clouds = [];
+  var birds = [];
+  var flowers = [];
+  var butterflies = [];
   var G = {};
 
   var imageCache = {};
@@ -96,6 +99,9 @@
 
     computeGeometry();
     makeClouds();
+    makeBirds();
+    makeFlowers();
+    makeButterflies();
 
     if (!running) draw();
   }
@@ -222,6 +228,13 @@
 
   function rand(min, max) {
     return min + Math.random() * (max - min);
+  }
+
+  /* Устойчивое «случайное» число 0..1 по номеру — для декораций,
+     которые не должны перепрыгивать при изменении размера окна. */
+  function rndAt(n) {
+    var v = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
+    return v - Math.floor(v);
   }
 
   function spawn(lane) {
@@ -357,18 +370,91 @@
         x: Math.random() * W,
         y: H * (0.04 + Math.random() * 0.2),
         s: Math.max(0.55, (0.7 + Math.random() * 0.7) * base),
-        v: 3 + Math.random() * 6
+        v: 3 + Math.random() * 6,
+        a: 0.75 + Math.random() * 0.22
       });
     }
   }
 
-  function drawCloud(x, y, s) {
+  function makeBirds() {
+    birds = [];
+
+    if (reducedMotion) return;
+
+    var count = W > 900 ? 4 : 3;
+    var base = Math.max(0.55, Math.min(1.15, Math.min(W, H) / 900));
+
+    for (var i = 0; i < count; i++) {
+      birds.push({
+        x: Math.random() * W,
+        y: H * (0.05 + Math.random() * 0.22),
+        s: base * (0.7 + Math.random() * 0.5),
+        v: (Math.random() < 0.5 ? -1 : 1) * (13 + Math.random() * 17),
+        phase: Math.random() * Math.PI * 2,
+        flap: 5.5 + Math.random() * 3.5
+      });
+    }
+  }
+
+  function makeFlowers() {
+    flowers = [];
+
+    var count = Math.max(6, Math.round(W / 130));
+    var palette = ["#ff8fb1", "#ffd166", "#f5f5ff", "#c79bff", "#ff9f68"];
+
+    for (var i = 0; i < count; i++) {
+      var r = rndAt(i + 1);
+      var r2 = rndAt(i * 2.7 + 5);
+
+      flowers.push({
+        x: ((i + 0.5) / count) * W + (r - 0.5) * 46,
+        s: 0.7 + r2 * 0.7,
+        color: palette[(r2 * palette.length) | 0],
+        phase: r * Math.PI * 2
+      });
+    }
+  }
+
+  function makeButterflies() {
+    butterflies = [];
+
+    if (reducedMotion) return;
+
+    var count = 2;
+    for (var i = 0; i < count; i++) {
+      butterflies.push({
+        x: W * (0.18 + i * 0.52 + rndAt(i + 11) * 0.18),
+        y: G.roadBottom + (H - G.roadBottom) * 0.45,
+        phase: rndAt(i + 3) * Math.PI * 2,
+        ax: 26 + rndAt(i + 7) * 34,
+        ay: 6 + rndAt(i + 9) * 10,
+        color: i ? "#ffd166" : "#ff9ec4"
+      });
+    }
+  }
+
+  function drawCloud(x, y, s, alpha) {
+    /* Мягкая голубая тень снизу */
+    ctx.globalAlpha = alpha * 0.55;
+    ctx.fillStyle = "#bfdcf0";
+    ctx.beginPath();
+    ctx.arc(x + 2 * s, y + 8 * s, 26 * s, 0, Math.PI * 2);
+    ctx.arc(x + 32 * s, y - 3 * s, 31 * s, 0, Math.PI * 2);
+    ctx.arc(x + 66 * s, y + 7 * s, 23 * s, 0, Math.PI * 2);
+    ctx.arc(x + 36 * s, y + 21 * s, 25 * s, 0, Math.PI * 2);
+    ctx.fill();
+
+    /* Само облако */
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "#ffffff";
     ctx.beginPath();
     ctx.arc(x, y, 26 * s, 0, Math.PI * 2);
     ctx.arc(x + 30 * s, y - 12 * s, 32 * s, 0, Math.PI * 2);
     ctx.arc(x + 66 * s, y - 2 * s, 24 * s, 0, Math.PI * 2);
     ctx.arc(x + 34 * s, y + 12 * s, 26 * s, 0, Math.PI * 2);
     ctx.fill();
+
+    ctx.globalAlpha = 1;
   }
 
   function drawSky(t) {
@@ -383,13 +469,14 @@
     var sunX = W * 0.82;
     var sunY = Math.min(H * 0.13, G.horizon * 0.55);
     var sunR = Math.max(18, Math.min(W, H) * 0.045);
+    var pulse = reducedMotion ? 0 : Math.sin(t * 0.9) * 0.06;
 
     var glow = ctx.createRadialGradient(sunX, sunY, sunR * 0.4, sunX, sunY, sunR * 3);
     glow.addColorStop(0, "rgba(255, 236, 150, 0.85)");
     glow.addColorStop(1, "rgba(255, 236, 150, 0)");
     ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(sunX, sunY, sunR * 3, 0, Math.PI * 2);
+    ctx.arc(sunX, sunY, sunR * 3 * (1 + pulse), 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = "#ffe58a";
@@ -399,13 +486,41 @@
 
     /* Облака */
     ctx.save();
-    ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
     for (var i = 0; i < clouds.length; i++) {
       var cl = clouds[i];
       var drift = reducedMotion ? 0 : t * cl.v;
       var x = ((cl.x + drift) % (W + 200)) - 100;
-      drawCloud(x, cl.y, cl.s);
+      drawCloud(x, cl.y, cl.s, cl.a);
     }
+    ctx.restore();
+
+    drawBirds(t);
+  }
+
+  function drawBirds(t) {
+    if (!birds.length) return;
+
+    ctx.save();
+    ctx.strokeStyle = "rgba(58, 78, 98, 0.72)";
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+
+    var span = W + 160;
+
+    for (var i = 0; i < birds.length; i++) {
+      var b = birds[i];
+      var x = b.x + b.v * t;
+      x = ((x + 80) % span + span) % span - 80;
+
+      var lift = Math.sin(t * b.flap + b.phase) * 5.5 * b.s;
+
+      ctx.beginPath();
+      ctx.moveTo(x - 10 * b.s, b.y - lift * 0.25);
+      ctx.quadraticCurveTo(x - 4 * b.s, b.y - 4 * b.s - lift, x, b.y);
+      ctx.quadraticCurveTo(x + 4 * b.s, b.y - 4 * b.s - lift, x + 10 * b.s, b.y - lift * 0.25);
+      ctx.stroke();
+    }
+
     ctx.restore();
   }
 
@@ -445,33 +560,86 @@
     ctx.fillRect(0, y - 1, W, 1.5);
   }
 
-  function drawTrees() {
+  function drawTrees(t) {
     var unit = Math.max(0.6, Math.min(1.5, H / 820));
     var count = Math.max(6, Math.round(W / 190));
     var baseY = G.roadTop - 4;
 
     for (var i = 0; i < count; i++) {
-      var rnd = Math.abs(Math.sin((i + 1) * 12.9898) * 43758.5453) % 1;
+      var rnd = rndAt(i + 1);
       var x = ((i + 0.5) / count) * W + (rnd - 0.5) * 60;
       var s = (0.7 + rnd * 0.6) * unit;
+      var sway = reducedMotion ? 0 : Math.sin(t * 1.05 + i * 1.7) * 2.4 * s;
 
       /* Ствол */
       ctx.fillStyle = "#9a6b45";
       ctx.fillRect(x - 3 * s, baseY - 34 * s, 6 * s, 34 * s);
 
+      /* Ветка к кроне — чуть качается вместе с листвой */
+      ctx.strokeStyle = "#8a5e3c";
+      ctx.lineWidth = 2.4 * s;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(x, baseY - 30 * s);
+      ctx.lineTo(x + sway * 0.6, baseY - 44 * s);
+      ctx.stroke();
+
       /* Крона */
-      ctx.fillStyle = "#6fbf73";
       var crown = [
-        [x - 13 * s, baseY - 44 * s, 16 * s],
-        [x + 12 * s, baseY - 46 * s, 17 * s],
-        [x, baseY - 60 * s, 19 * s]
+        [x + sway - 13 * s, baseY - 44 * s, 16 * s],
+        [x + sway + 12 * s, baseY - 46 * s, 17 * s],
+        [x + sway, baseY - 60 * s, 19 * s]
       ];
+
+      ctx.fillStyle = "#6fbf73";
       for (var k = 0; k < crown.length; k++) {
         ctx.beginPath();
         ctx.arc(crown[k][0], crown[k][1], crown[k][2], 0, Math.PI * 2);
         ctx.fill();
       }
+
+      /* Светлый блик на листве */
+      ctx.fillStyle = "rgba(168, 226, 160, 0.85)";
+      ctx.beginPath();
+      ctx.arc(x + sway - 6 * s, baseY - 54 * s, 9 * s, 0, Math.PI * 2);
+      ctx.fill();
     }
+  }
+
+  function drawFlowers(t) {
+    var baseY = G.roadTop - 3;
+
+    ctx.save();
+    ctx.lineCap = "round";
+
+    for (var i = 0; i < flowers.length; i++) {
+      var f = flowers[i];
+      var sway = reducedMotion ? 0 : Math.sin(t * 1.6 + f.phase) * 1.8 * f.s;
+      var topY = baseY - 15 * f.s;
+      var topX = f.x + sway;
+
+      ctx.strokeStyle = "rgba(76, 150, 74, 0.9)";
+      ctx.lineWidth = Math.max(1, 1.6 * f.s);
+      ctx.beginPath();
+      ctx.moveTo(f.x, baseY);
+      ctx.quadraticCurveTo(f.x + sway * 0.4, baseY - 8 * f.s, topX, topY);
+      ctx.stroke();
+
+      ctx.fillStyle = f.color;
+      for (var p = 0; p < 5; p++) {
+        var a = (p / 5) * Math.PI * 2 + f.phase;
+        ctx.beginPath();
+        ctx.arc(topX + Math.cos(a) * 2.6 * f.s, topY + Math.sin(a) * 2.6 * f.s, 1.9 * f.s, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.fillStyle = "#ffd45e";
+      ctx.beginPath();
+      ctx.arc(topX, topY, 1.5 * f.s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
   }
 
   function drawRoad() {
@@ -520,6 +688,66 @@
     ctx.fillRect(0, y - 6, W, 6);
     ctx.fillStyle = "rgba(0, 0, 0, 0.14)";
     ctx.fillRect(0, y - 6, W, 1.5);
+  }
+
+  function drawGrass(t) {
+    var band = H - G.roadBottom;
+    var count = Math.max(20, Math.round(W / 38));
+    var maxH = Math.max(10, band * 0.9);
+
+    ctx.save();
+    ctx.lineCap = "round";
+
+    for (var i = 0; i < count; i++) {
+      var r = rndAt(i * 1.7 + 2);
+      var x = ((i + 0.5) / count) * W + (r - 0.5) * 34;
+      var hgt = maxH * (0.5 + rndAt(i * 3.1 + 4) * 0.7);
+      var sway = reducedMotion ? 0 : Math.sin(t * 1.9 + i * 0.8) * 2.6;
+
+      ctx.strokeStyle = i % 3 === 0
+        ? "rgba(126, 198, 96, 0.9)"
+        : "rgba(66, 140, 62, 0.75)";
+      ctx.lineWidth = i % 2 ? 1.6 : 2.2;
+      ctx.beginPath();
+      ctx.moveTo(x, H + 1);
+      ctx.quadraticCurveTo(x + sway * 0.4, H - hgt * 0.55, x + sway, H - hgt);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawButterflies(t) {
+    if (!butterflies.length) return;
+
+    ctx.save();
+
+    for (var i = 0; i < butterflies.length; i++) {
+      var b = butterflies[i];
+      var x = b.x + Math.sin(t * 0.7 + b.phase) * b.ax;
+      var y = b.y + Math.sin(t * 1.4 + b.phase * 1.7) * b.ay;
+      var flap = 0.35 + Math.abs(Math.sin(t * 7 + b.phase)) * 0.65;
+
+      ctx.save();
+      ctx.translate(x, y);
+
+      ctx.fillStyle = b.color;
+      ctx.beginPath();
+      ctx.ellipse(-3.4, -1, 3.6, 2.6 * flap, -0.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(3.4, -1, 3.6, 2.6 * flap, 0.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(80, 60, 40, 0.8)";
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 0.9, 2.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    ctx.restore();
   }
 
   function drawCar(c, t) {
@@ -616,7 +844,8 @@
     drawSky(t);
     drawHills();
     drawCurb();
-    drawTrees();
+    drawTrees(t);
+    drawFlowers(t);
     drawRoad();
 
     for (var li = 0; li < lanes.length; li++) {
@@ -627,6 +856,8 @@
     }
 
     drawForeground();
+    drawGrass(t);
+    drawButterflies(t);
   }
 
   /* ============================================================
