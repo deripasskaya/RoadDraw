@@ -38,29 +38,13 @@
   var speedMul = 1;
   var muted = false;
   var audio = null;
-  var musicGain = null;
-  var musicFilter = null;
-  var musicTimer = 0;
-  var musicNext = 0;
-  var musicStep = 0;
+  var music = null;
+  var musicFadeTimer = 0;
+  var musicPauseTimer = 0;
   var musicPlaying = false;
 
-  var MUSIC_VOLUME = 0.16;
-
-  /* Спокойная пентатоника и мягкие аккорды */
-  var MUSIC_CHORDS = [
-    [130.81, 164.81, 196.00, 246.94, 523.25],
-    [110.00, 130.81, 164.81, 196.00, 440.00],
-    [87.31, 110.00, 130.81, 164.81, 349.23],
-    [98.00, 123.47, 146.83, 164.81, 392.00]
-  ];
-
-  var MUSIC_MELODY = [
-    0, null, 2, null, 4, null, 3, null,
-    1, null, 4, null, 2, null, 0, null
-  ];
-
-  var MUSIC_NOTES = [523.25, 587.33, 659.25, 783.99, 880.00];
+  var MUSIC_VOLUME = 0.22;
+  var MUSIC_SRC = "assets/audio/derevenskiy-rassvet.mp3";
 
   /* ============================================================
      Геометрия сцены
@@ -72,6 +56,11 @@
     var roadTop = roadBottom - roadH;
     var sidewalkTop = roadTop - roadH * 0.16;
 
+    /* Машины вдвое крупнее прежнего: ближняя полоса занимает больше
+       половины высоты дороги, дальняя — пропорционально меньше. */
+    var nearH = roadH * 0.54;
+    var farH = nearH * 0.76;
+
     G = {
       roadTop: roadTop,
       roadBottom: roadBottom,
@@ -79,12 +68,9 @@
       sidewalkTop: sidewalkTop,
       horizon: sidewalkTop - roadH * 0.12,
       centerY: roadTop + roadH * 0.5,
-      farY: roadTop + roadH * 0.32,
-      nearY: roadTop + roadH * 0.82
+      farY: roadTop + farH + roadH * 0.02,
+      nearY: roadTop + roadH * 0.84
     };
-
-    var nearH = roadH * 0.27;
-    var farH = nearH * 0.76;
 
     if (!lanes.length) {
       lanes = [
@@ -260,16 +246,31 @@
     return v - Math.floor(v);
   }
 
-  function spawn(lane) {
-    if (!library.length) return;
+  function imgOnRoad(img) {
+    for (var i = 0; i < cars.length; i++) {
+      if (cars[i].img === img) return true;
+    }
+    return false;
+  }
 
-    var item = library[(Math.random() * library.length) | 0];
+  function spawn(lane) {
+    if (!library.length) return false;
+
+    /* Одна и та же картинка не должна ехать дважды */
+    var pool = [];
+    for (var i = 0; i < library.length; i++) {
+      if (!imgOnRoad(library[i].img)) pool.push(library[i]);
+    }
+
+    if (!pool.length) return false;
+
+    var item = pool[(Math.random() * pool.length) | 0];
     var sizeMul = rand(0.92, 1.08);
     var h = lane.carH * sizeMul;
     var w = h * item.aspect;
 
-    if (w > W * 0.42) {
-      w = W * 0.42;
+    if (w > W * 0.5) {
+      w = W * 0.5;
       h = w / item.aspect;
       sizeMul = h / lane.carH;
     }
@@ -297,6 +298,8 @@
 
     car.v = car.vmax * 0.55;
     cars.push(car);
+
+    return true;
   }
 
   function canSpawn(lane) {
@@ -327,8 +330,7 @@
       lane.timer -= dt;
 
       if (lane.timer <= 0) {
-        if (canSpawn(lane)) {
-          spawn(lane);
+        if (canSpawn(lane) && spawn(lane)) {
           lane.timer = rand(0.9, 2.6);
         } else {
           lane.timer = 0.35;
@@ -892,126 +894,79 @@
     var AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
     audio = new AC();
-
-    musicFilter = audio.createBiquadFilter();
-    musicFilter.type = "lowpass";
-    musicFilter.frequency.value = 2200;
-    musicFilter.Q.value = 0.6;
-
-    musicGain = audio.createGain();
-    musicGain.gain.value = 0;
-
-    musicFilter.connect(musicGain);
-    musicGain.connect(audio.destination);
-
     return audio;
   }
 
-  function musicPad(freq, when, dur, vol) {
-    if (!audio || !musicFilter) return;
+  function ensureMusic() {
+    if (music) return music;
 
-    var osc = audio.createOscillator();
-    var gain = audio.createGain();
+    music = new Audio(MUSIC_SRC);
+    music.loop = true;
+    music.preload = "auto";
+    music.volume = 0;
+    music.setAttribute("playsinline", "");
 
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(freq, when);
-    osc.detune.setValueAtTime((Math.random() - 0.5) * 5, when);
+    music.addEventListener("error", function () {
+      musicPlaying = false;
+    });
 
-    gain.gain.setValueAtTime(0, when);
-    gain.gain.linearRampToValueAtTime(vol, when + 1.4);
-    gain.gain.setValueAtTime(vol, when + dur - 1.8);
-    gain.gain.linearRampToValueAtTime(0, when + dur);
-
-    osc.connect(gain);
-    gain.connect(musicFilter);
-    osc.start(when);
-    osc.stop(when + dur + 0.05);
+    return music;
   }
 
-  function musicBell(freq, when, vol) {
-    if (!audio || !musicFilter) return;
+  function fadeMusic(to, duration) {
+    var el = ensureMusic();
+    if (!el) return;
 
-    var osc = audio.createOscillator();
-    var gain = audio.createGain();
+    clearInterval(musicFadeTimer);
 
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(freq, when);
+    var from = el.volume;
+    var start = Date.now();
 
-    gain.gain.setValueAtTime(0, when);
-    gain.gain.linearRampToValueAtTime(vol, when + 0.015);
-    gain.gain.exponentialRampToValueAtTime(0.0001, when + 1.8);
+    musicFadeTimer = setInterval(function () {
+      var p = Math.min(1, (Date.now() - start) / duration);
+      el.volume = Math.max(0, Math.min(1, from + (to - from) * p));
 
-    osc.connect(gain);
-    gain.connect(musicFilter);
-    osc.start(when);
-    osc.stop(when + 1.9);
-  }
-
-  function scheduleMusicStep(step, when) {
-    if (step % 8 === 0) {
-      var chord = MUSIC_CHORDS[Math.floor(step / 8) % MUSIC_CHORDS.length];
-
-      for (var i = 0; i < chord.length; i++) {
-        var vol = i === chord.length - 1 ? 0.045 : 0.11;
-        musicPad(chord[i], when, 9, vol);
+      if (p >= 1) {
+        clearInterval(musicFadeTimer);
+        musicFadeTimer = 0;
       }
-    }
-
-    var note = MUSIC_MELODY[step % MUSIC_MELODY.length];
-    if (note !== null) {
-      musicBell(MUSIC_NOTES[note], when + 0.12, 0.16);
-    }
-  }
-
-  function musicTick() {
-    if (!musicPlaying || muted || !audio) return;
-
-    var now = audio.currentTime;
-    if (musicNext < now) musicNext = now + 0.05;
-
-    while (musicNext < now + 2.5) {
-      scheduleMusicStep(musicStep, musicNext);
-      musicStep++;
-      musicNext += 1;
-    }
+    }, 40);
   }
 
   function startMusic() {
     if (muted || musicPlaying) return;
 
-    var ac = ensureAudio();
-    if (!ac) return;
-
-    if (ac.state === "suspended") ac.resume();
+    var el = ensureMusic();
+    if (!el) return;
 
     musicPlaying = true;
-    musicStep = 0;
-    musicNext = ac.currentTime + 0.15;
+    clearTimeout(musicPauseTimer);
 
-    var now = ac.currentTime;
-    musicGain.gain.cancelScheduledValues(now);
-    musicGain.gain.setValueAtTime(musicGain.gain.value, now);
-    musicGain.gain.linearRampToValueAtTime(MUSIC_VOLUME, now + 2.5);
+    var played = el.play();
 
-    musicTick();
-
-    if (!musicTimer) musicTimer = setInterval(musicTick, 500);
+    if (played && played.then) {
+      played.then(function () {
+        if (musicPlaying) fadeMusic(MUSIC_VOLUME, 1800);
+      }).catch(function () {
+        musicPlaying = false;
+        el.volume = 0;
+      });
+    } else {
+      fadeMusic(MUSIC_VOLUME, 1800);
+    }
   }
 
   function stopMusic() {
     musicPlaying = false;
 
-    if (musicTimer) {
-      clearInterval(musicTimer);
-      musicTimer = 0;
-    }
+    if (!music) return;
 
-    if (!audio || !musicGain) return;
+    fadeMusic(0, 500);
 
-    var now = audio.currentTime;
-    musicGain.gain.cancelScheduledValues(now);
-    musicGain.gain.setValueAtTime(musicGain.gain.value, now);
-    musicGain.gain.linearRampToValueAtTime(0, now + 0.5);
+    clearTimeout(musicPauseTimer);
+    musicPauseTimer = setTimeout(function () {
+      if (!musicPlaying && music) music.pause();
+    }, 550);
   }
 
   function honk() {
@@ -1175,7 +1130,7 @@
       var starts = [0.18, 0.62];
       for (var li = 0; li < lanes.length; li++) {
         for (var si = 0; si < starts.length; si++) {
-          spawn(lanes[li]);
+          if (!spawn(lanes[li])) break;
           var car = cars[cars.length - 1];
           car.x = W * starts[si] - car.w / 2;
         }
@@ -1198,10 +1153,12 @@
     get library() { return library; },
     get audioState() {
       return {
-        state: audio ? audio.state : "none",
+        context: audio ? audio.state : "none",
         music: musicPlaying,
         muted: muted,
-        volume: musicGain ? Math.round(musicGain.gain.value * 1000) / 1000 : 0
+        volume: music ? Math.round(music.volume * 1000) / 1000 : 0,
+        paused: music ? music.paused : true,
+        time: music ? Math.round(music.currentTime * 10) / 10 : 0
       };
     },
     refresh: refreshLibrary,
