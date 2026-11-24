@@ -720,32 +720,34 @@
   function drawFir(x, baseY, s, sway) {
     /* Ствол */
     ctx.fillStyle = "#6b4a2f";
-    ctx.fillRect(x - 2.4 * s, baseY - 16 * s, 4.8 * s, 16 * s);
+    ctx.fillRect(x - 3 * s, baseY - 18 * s, 6 * s, 18 * s);
 
     var tiers = 4;
 
     for (var i = 0; i < tiers; i++) {
       var frac = i / (tiers - 1);
-      var yBottom = baseY - 10 * s - frac * 42 * s;
-      var w = (30 - frac * 19) * s;
-      var h = (26 - frac * 8) * s;
-      var tipX = x + sway * (0.5 + frac * 0.5);
+      var yBottom = baseY - 12 * s - frac * 42 * s;
+      var w = (46 - frac * 26) * s;
+      var h = (28 - frac * 9) * s;
+      var baseShift = sway * (0.25 + frac * 0.5);
+      var tipShift = sway * (0.6 + frac * 0.8);
       var tipY = yBottom - h;
 
       ctx.fillStyle = i % 2 ? "#2f7d52" : "#256b45";
       ctx.beginPath();
-      ctx.moveTo(x - w / 2, yBottom);
-      ctx.lineTo(tipX, tipY);
-      ctx.lineTo(x + w / 2, yBottom);
+      ctx.moveTo(x + baseShift - w / 2, yBottom);
+      ctx.lineTo(x + tipShift, tipY);
+      ctx.lineTo(x + baseShift + w / 2, yBottom);
       ctx.closePath();
       ctx.fill();
 
       /* Снег на ветках */
+      var capShift = baseShift + (tipShift - baseShift) * 0.42;
       ctx.fillStyle = "rgba(248, 252, 255, 0.95)";
       ctx.beginPath();
-      ctx.moveTo(x - w * 0.26, yBottom - h * 0.42);
-      ctx.lineTo(tipX, tipY);
-      ctx.lineTo(x + w * 0.26, yBottom - h * 0.42);
+      ctx.moveTo(x + capShift - w * 0.26, yBottom - h * 0.42);
+      ctx.lineTo(x + tipShift, tipY);
+      ctx.lineTo(x + capShift + w * 0.26, yBottom - h * 0.42);
       ctx.closePath();
       ctx.fill();
     }
@@ -753,7 +755,7 @@
     /* Снежный сугроб у основания */
     ctx.fillStyle = "rgba(245, 250, 255, 0.95)";
     ctx.beginPath();
-    ctx.ellipse(x, baseY + 1, 15 * s, 4 * s, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, baseY + 1, 20 * s, 5 * s, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -763,9 +765,11 @@
 
     for (var i = 0; i < tiers; i++) {
       var frac = i / (tiers - 1);
-      var yBottom = baseY - 10 * s - frac * 42 * s;
-      var w = (30 - frac * 19) * s;
-      var h = (26 - frac * 8) * s;
+      var yBottom = baseY - 12 * s - frac * 42 * s;
+      var w = (46 - frac * 26) * s;
+      var h = (28 - frac * 9) * s;
+      var baseShift = sway * (0.25 + frac * 0.5);
+      var tipShift = sway * (0.6 + frac * 0.8);
       var n = i === 0 ? 3 : 2;
 
       for (var k = 0; k < n; k++) {
@@ -773,9 +777,10 @@
         var halfW = (w / 2) * (1 - f);
         var side = k % 2 === 0 ? -1 : 1;
         var r = rndAt(seed * 13 + i * 7 + k * 3 + 50);
+        var shiftAtF = baseShift + (tipShift - baseShift) * f;
 
         firLights.push({
-          x: x + side * halfW * 0.62 + sway * f,
+          x: x + shiftAtF + side * halfW * 0.62,
           y: yBottom - f * h,
           color: palette[(r * palette.length) | 0],
           phase: r * Math.PI * 2,
@@ -796,7 +801,9 @@
       var rnd = rndAt(i + 1);
       var x = ((i + 0.5) / count) * W + (rnd - 0.5) * 60;
       var s = (0.7 + rnd * 0.6) * unit;
-      var sway = reducedMotion ? 0 : Math.sin(t * 0.9 + i * 1.7) * 1.6 * s;
+      var sway = reducedMotion
+        ? 0
+        : (Math.sin(t * 1.3 + i * 1.7) * 3.6 + Math.sin(t * 2.3 + i * 0.8) * 1.3) * s;
 
       drawFir(x, baseY, s, sway);
       addFirLights(x, baseY, s, sway, i);
