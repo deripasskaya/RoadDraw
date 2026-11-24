@@ -46,6 +46,11 @@
   var MUSIC_VOLUME = 0.22;
   var MUSIC_SRC = "assets/audio/derevenskiy-rassvet.mp3";
 
+  /* Время суток: 0 = полночь, 0.25 = рассвет, 0.5 = полдень, 0.75 = закат */
+  var dayPhase = 0.45;
+  var DAY_LENGTH = 240;   /* секунд на полный цикл */
+  var night = 0;
+
   /* ============================================================
      Геометрия сцены
      ============================================================ */
@@ -88,8 +93,8 @@
       var c = cars[i];
       c.h = c.lane.carH * c.sizeMul;
       c.w = c.h * c.aspect;
-      if (c.w > W * 0.42) {
-        c.w = W * 0.42;
+      if (c.w > W * 0.5) {
+        c.w = W * 0.5;
         c.h = c.w / c.aspect;
       }
     }
@@ -325,6 +330,10 @@
   function update(dt) {
     time += dt;
 
+    /* Плавная смена времени суток */
+    dayPhase = (dayPhase + dt / DAY_LENGTH) % 1;
+    night = 1 - (1 - Math.cos(2 * Math.PI * dayPhase)) / 2;
+
     for (var li = 0; li < lanes.length; li++) {
       var lane = lanes[li];
       lane.timer -= dt;
@@ -384,6 +393,18 @@
   /* ============================================================
      Рисование
      ============================================================ */
+
+  function mixColor(a, b, t) {
+    return [
+      Math.round(a[0] + (b[0] - a[0]) * t),
+      Math.round(a[1] + (b[1] - a[1]) * t),
+      Math.round(a[2] + (b[2] - a[2]) * t)
+    ];
+  }
+
+  function rgb(c) {
+    return "rgb(" + c[0] + "," + c[1] + "," + c[2] + ")";
+  }
 
   function makeClouds() {
     clouds = [];
@@ -482,40 +503,111 @@
     ctx.globalAlpha = 1;
   }
 
+  function drawStars(t, n) {
+    if (n < 0.03) return;
+
+    var count = Math.max(10, Math.round(W / 70));
+    var top = G.horizon * 0.85;
+
+    ctx.save();
+    for (var i = 0; i < count; i++) {
+      var x = rndAt(i + 101) * W;
+      var y = rndAt(i + 207) * top;
+      var s = rndAt(i + 311) > 0.85 ? 2 : 1;
+      var tw = 0.5 + 0.5 * Math.sin(t * 1.4 + i * 1.9);
+
+      ctx.globalAlpha = n * (0.35 + 0.65 * tw);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(x, y, s, s);
+    }
+    ctx.restore();
+  }
+
   function drawSky(t) {
+    var n = night;
+    var day = 1 - n;
+
+    var top = mixColor([111, 196, 239], [8, 13, 42], n);
+    var mid = mixColor([191, 232, 251], [22, 34, 76], n);
+    var bot = mixColor([234, 247, 255], [40, 54, 96], n);
+
     var sky = ctx.createLinearGradient(0, 0, 0, G.horizon + 40);
-    sky.addColorStop(0, "#6fc4ef");
-    sky.addColorStop(0.6, "#bfe8fb");
-    sky.addColorStop(1, "#eaf7ff");
+    sky.addColorStop(0, rgb(top));
+    sky.addColorStop(0.6, rgb(mid));
+    sky.addColorStop(1, rgb(bot));
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, W, G.horizon + 40);
 
-    /* Солнце */
+    drawStars(t, n);
+
+    /* Солнце — днём */
     var sunX = W * 0.82;
     var sunY = Math.min(H * 0.13, G.horizon * 0.55);
     var sunR = Math.max(18, Math.min(W, H) * 0.045);
     var pulse = reducedMotion ? 0 : Math.sin(t * 0.9) * 0.06;
 
-    var glow = ctx.createRadialGradient(sunX, sunY, sunR * 0.4, sunX, sunY, sunR * 3);
-    glow.addColorStop(0, "rgba(255, 236, 150, 0.85)");
-    glow.addColorStop(1, "rgba(255, 236, 150, 0)");
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(sunX, sunY, sunR * 3 * (1 + pulse), 0, Math.PI * 2);
-    ctx.fill();
+    if (day > 0.02) {
+      ctx.save();
+      ctx.globalAlpha = day;
 
-    ctx.fillStyle = "#ffe58a";
-    ctx.beginPath();
-    ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
-    ctx.fill();
+      var glow = ctx.createRadialGradient(sunX, sunY, sunR * 0.4, sunX, sunY, sunR * 3);
+      glow.addColorStop(0, "rgba(255, 236, 150, 0.85)");
+      glow.addColorStop(1, "rgba(255, 236, 150, 0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, sunR * 3 * (1 + pulse), 0, Math.PI * 2);
+      ctx.fill();
 
-    /* Облака */
+      ctx.fillStyle = "#ffe58a";
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    /* Луна — ночью */
+    if (n > 0.02) {
+      var moonX = W * 0.16;
+      var moonY = Math.min(H * 0.13, G.horizon * 0.55);
+      var moonR = sunR * 0.72;
+
+      ctx.save();
+      ctx.globalAlpha = n;
+
+      var mglow = ctx.createRadialGradient(moonX, moonY, moonR * 0.4, moonX, moonY, moonR * 2.6);
+      mglow.addColorStop(0, "rgba(220, 230, 255, 0.5)");
+      mglow.addColorStop(1, "rgba(220, 230, 255, 0)");
+      ctx.fillStyle = mglow;
+      ctx.beginPath();
+      ctx.arc(moonX, moonY, moonR * 2.6, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#eaf0ff";
+      ctx.beginPath();
+      ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+      ctx.fill();
+
+      /* Лёгкая тень-кратер */
+      ctx.fillStyle = "rgba(180, 196, 235, 0.5)";
+      ctx.beginPath();
+      ctx.arc(moonX - moonR * 0.3, moonY - moonR * 0.2, moonR * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(moonX + moonR * 0.28, moonY + moonR * 0.3, moonR * 0.16, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    /* Облака — ночью приглушены */
     ctx.save();
+    var cloudDim = 1 - n * 0.65;
     for (var i = 0; i < clouds.length; i++) {
       var cl = clouds[i];
       var drift = reducedMotion ? 0 : t * cl.v;
       var x = ((cl.x + drift) % (W + 200)) - 100;
-      drawCloud(x, cl.y, cl.s, cl.a);
+      drawCloud(x, cl.y, cl.s, cl.a * cloudDim);
     }
     ctx.restore();
 
@@ -526,7 +618,7 @@
     if (!birds.length) return;
 
     ctx.save();
-    ctx.strokeStyle = "rgba(58, 78, 98, 0.72)";
+    ctx.strokeStyle = "rgba(58, 78, 98, " + (0.72 * (1 - night)) + ")";
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
 
@@ -775,9 +867,12 @@
     ctx.restore();
   }
 
-  /* Мягкое свечение фар спереди машины — там, где они расположены
-     (на носу, в сторону движения). */
-  function drawHeadlights(c, baseline) {
+  /* Свечение фар — только ночью, спереди машины (на носу). */
+  function drawHeadlights(c) {
+    var n = night;
+    if (n <= 0.02) return;
+
+    var baseline = c.box.y + c.h;
     var frontX = c.dir === 1 ? c.x + c.w - 2 : c.x + 2;
     var hy = baseline - c.h * 0.38;
     var r = Math.max(8, c.h * 0.16);
@@ -785,16 +880,37 @@
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
 
-    /* Ореол у фары */
     var glow = ctx.createRadialGradient(frontX, hy, 1, frontX, hy, r * 2.2);
-    glow.addColorStop(0, "rgba(255, 238, 175, 0.85)");
-    glow.addColorStop(0.4, "rgba(255, 228, 145, 0.3)");
+    glow.addColorStop(0, "rgba(255, 238, 175, " + (0.85 * n) + ")");
+    glow.addColorStop(0.4, "rgba(255, 228, 145, " + (0.3 * n) + ")");
     glow.addColorStop(1, "rgba(255, 228, 145, 0)");
     ctx.fillStyle = glow;
     ctx.beginPath();
     ctx.arc(frontX, hy, r * 2.2, 0, Math.PI * 2);
     ctx.fill();
 
+    ctx.restore();
+  }
+
+  function drawAllHeadlights() {
+    if (night <= 0.02) return;
+
+    for (var li = 0; li < lanes.length; li++) {
+      var lane = lanes[li];
+      for (var i = 0; i < cars.length; i++) {
+        if (cars[i].lane === lane) drawHeadlights(cars[i]);
+      }
+    }
+  }
+
+  /* Ночное затемнение земли (дороги, холмов, машин) */
+  function drawNightOverlay() {
+    var a = night * 0.55;
+    if (a <= 0.01) return;
+
+    ctx.save();
+    ctx.fillStyle = "rgba(7, 12, 32, " + a + ")";
+    ctx.fillRect(0, G.horizon, W, H - G.horizon);
     ctx.restore();
   }
 
@@ -829,8 +945,6 @@
     if (c.flip) ctx.scale(-1, 1);
     ctx.drawImage(c.img, -c.w / 2, -c.h, c.w, c.h);
     ctx.restore();
-
-    drawHeadlights(c, baseline);
 
     if (c.bubble > 0) drawBubble(c, baseline);
   }
@@ -908,6 +1022,9 @@
     drawForeground();
     drawGrass(t);
     drawButterflies(t);
+
+    drawNightOverlay();
+    drawAllHeadlights();
   }
 
   /* ============================================================
@@ -1184,6 +1301,13 @@
         volume: music ? Math.round(music.volume * 1000) / 1000 : 0,
         paused: music ? music.paused : true,
         time: music ? Math.round(music.currentTime * 10) / 10 : 0
+      };
+    },
+    get timeOfDay() {
+      return {
+        phase: Math.round(dayPhase * 1000) / 1000,
+        day: Math.round((1 - night) * 1000) / 1000,
+        night: Math.round(night * 1000) / 1000
       };
     },
     refresh: refreshLibrary,
