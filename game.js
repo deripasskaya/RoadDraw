@@ -525,7 +525,6 @@
 
   function drawSky(t) {
     var n = night;
-    var day = 1 - n;
 
     var top = mixColor([111, 196, 239], [8, 13, 42], n);
     var mid = mixColor([191, 232, 251], [22, 34, 76], n);
@@ -540,15 +539,19 @@
 
     drawStars(t, n);
 
-    /* Солнце — днём */
-    var sunX = W * 0.82;
-    var sunY = Math.min(H * 0.13, G.horizon * 0.55);
+    /* Солнце — движется по дуге и заходит за горизонт */
+    var sunTop = Math.min(H * 0.13, G.horizon * 0.55);
     var sunR = Math.max(18, Math.min(W, H) * 0.045);
     var pulse = reducedMotion ? 0 : Math.sin(t * 0.9) * 0.06;
 
-    if (day > 0.02) {
+    var e = -Math.cos(2 * Math.PI * dayPhase);   /* 1=полдень, 0=горизонт, -1=полночь */
+    var sunX = W * (0.12 + 0.76 * Math.max(0, Math.min(1, (dayPhase - 0.25) / 0.5)));
+    var sunY = G.horizon - e * (G.horizon - sunTop);
+    var sunA = Math.max(0, Math.min(1, 1 + e * 5));   /* видно до горизонта, гаснет за ним */
+
+    if (sunA > 0.02) {
       ctx.save();
-      ctx.globalAlpha = day;
+      ctx.globalAlpha = sunA;
 
       var glow = ctx.createRadialGradient(sunX, sunY, sunR * 0.4, sunX, sunY, sunR * 3);
       glow.addColorStop(0, "rgba(255, 236, 150, 0.85)");
@@ -908,9 +911,11 @@
     var a = night * 0.55;
     if (a <= 0.01) return;
 
+    var top = G.horizon - 20;   /* захватываем вершины холмов */
+
     ctx.save();
     ctx.fillStyle = "rgba(7, 12, 32, " + a + ")";
-    ctx.fillRect(0, G.horizon, W, H - G.horizon);
+    ctx.fillRect(0, top, W, H - top);
     ctx.restore();
   }
 
@@ -941,6 +946,9 @@
     ctx.restore();
 
     ctx.save();
+    if (night > 0.02) {
+      ctx.filter = "brightness(" + (1 - night * 0.18).toFixed(3) + ")";
+    }
     ctx.translate(c.x + c.w / 2, baseline);
     if (c.flip) ctx.scale(-1, 1);
     ctx.drawImage(c.img, -c.w / 2, -c.h, c.w, c.h);
@@ -1011,6 +1019,12 @@
     drawTrees(t);
     drawFlowers(t);
     drawRoad();
+    drawForeground();
+    drawGrass(t);
+    drawButterflies(t);
+
+    /* Затемняем землю ночью (но не машины) */
+    drawNightOverlay();
 
     for (var li = 0; li < lanes.length; li++) {
       var lane = lanes[li];
@@ -1019,11 +1033,6 @@
       }
     }
 
-    drawForeground();
-    drawGrass(t);
-    drawButterflies(t);
-
-    drawNightOverlay();
     drawAllHeadlights();
   }
 
