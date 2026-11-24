@@ -574,8 +574,145 @@
     }
   }
 
-  /* Удаляем светлый малонасыщенный фон, связанный с краями */
-  function removeLightBackground(px, w, h, tolPercent) {
+  function smoothstep(x, a, b) {
+    var t = (x - a) / (b - a);
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+    return t * t * (3 - 2 * t);
+  }
+
+  /* Кривая Levels + гамма: бледные штрихи темнеют, бумага уходит в белый */
+  function buildToneLut() {
+    var lut = new Uint8Array(256);
+    var black = 140;
+    var white = 245;
+    var gamma = 1.65;
+
+    for (var i = 0; i < 256; i++) {
+      var v = (i - black) / (white - black);
+      if (v < 0) v = 0;
+      if (v > 1) v = 1;
+      lut[i] = Math.round(255 * Math.pow(v, gamma));
+    }
+
+    return lut;
+  }
+
+  /* Маска штрихов: Собель по нормализованной яркости + локальный контраст.
+     Тень на бумаге плавная, а карандаш даёт резкий перепад и тёмную сторону. */
+  function buildStrokeMask(px, w, h) {
+    var total = w * h;
+    var lum = new Float32Array(total);
+    var i;
+
+    for (i = 0; i < total; i++) {
+      var o = i * 4;
+      lum[i] = luma(px[o], px[o + 1], px[o + 2]);
+    }
+
+    var edge = new Uint8Array(total);
+    var edgeThresh = 55;
+    var x, y;
+
+    for (y = 1; y < h - 1; y++) {
+      for (x = 1; x < w - 1; x++) {
+        i = y * w + x;
+
+        var gx =
+          -lum[i - w - 1] + lum[i - w + 1] -
+          2 * lum[i - 1] + 2 * lum[i + 1] -
+          lum[i + w - 1] + lum[i + w + 1];
+
+        var gy =
+          -lum[i - w - 1] - 2 * lum[i - w] - lum[i - w + 1] +
+          lum[i + w - 1] + 2 * lum[i + w] + lum[i + w + 1];
+
+        if (Math.abs(gx) + Math.abs(gy) <= edgeThresh) continue;
+
+        /* Отсекаем светлую текстуру бумаги: у штриха есть тёмная сторона */
+        var mn = 255;
+        var mx = 0;
+
+        for (var dy = -1; dy <= 1; dy++) {
+          for (var dx = -1; dx <= 1; dx++) {
+            var v = lum[(y + dy) * w + (x + dx)];
+            if (v < mn) mn = v;
+            if (v > mx) mx = v;
+          }
+        }
+
+        if (mx - mn < 18) continue;
+        if (mn > 232) continue;
+
+        edge[i] = 1;
+      }
+    }
+
+    /* Убираем одиночные пиксели шума, оставляем линии */
+    var protect = new Uint8Array(total);
+
+    for (y = 1; y < h - 1; y++) {
+      for (x = 1; x < w - 1; x++) {
+        i = y * w + x;
+        if (!edge[i]) continue;
+
+        var count = 0;
+        for (var dy2 = -1; dy2 <= 1; dy2++) {
+          for (var dx2 = -1; dx2 <= 1; dx2++) {
+            if (dx2 || dy2) count += edge[(y + dy2) * w + (x + dx2)];
+          }
+        }
+
+        if (count >= 2) protect[i] = 1;
+      }
+    }
+
+    return protect;
+  }
+
+  /* Тянем контраст на оставшихся пикселях */
+  function enhanceContrast(px, w, h, lut) {
+    var total = w * h;
+
+    for (var i = 0; i < total; i++) {
+      var o = i * 4;
+      if (px[o + 3] < 16) continue;
+
+      var r = px[o];
+      var g = px[o + 1];
+      var b = px[o + 2];
+      var mx = Math.max(r, g, b);
+      var mn = Math.min(r, g, b);
+      var l = luma(r, g, b);
+      var sat = mx - mn;
+
+      /* Светлая малонасыщенная бумага — в чистый белый */
+      if (l >= 238 && sat <= 42) {
+        px[o] = r + (252 - r) * 0.85;
+        px[o + 1] = g + (252 - g) * 0.85;
+        px[o + 2] = b + (252 - b) * 0.85;
+        continue;
+      }
+
+      var idx = l | 0;
+      if (idx < 0) idx = 0;
+      if (idx > 255) idx = 255;
+
+      var target = lut[idx];
+      var scale = target / Math.max(1, l);
+      var blend = smoothstep(sat, 10, 55);
+      var eff = scale + (1 - scale) * blend;
+
+      px[o] = r * eff;
+      px[o + 1] = g * eff;
+      px[o + 2] = b * eff;
+    }
+  }
+
+  /* Удаляем светлый малонасыщенный фон, связанный с краями.
+     Штрихи (protect) и их расширенная маска (guard) не дают
+     заливке протечь внутрь кузова через тонкие линии. */
+  function removeLightBackground(px, w, h, tolPercent, protect) {
     var total = w * h;
     var bg = sampleCornerColor(px, w, h);
     var slider = Math.max(0, Math.min(100, tolPercent));
@@ -617,12 +754,15 @@
       bgLike[i] = 1;
     }
 
+    var radius = Math.max(2, Math.min(3, Math.round(Math.min(w, h) / 350)));
+    var guard = morphDilate(protect, w, h, radius);
+
     var outside = new Uint8Array(total);
     var stack = new Int32Array(total);
     var sp = 0;
 
     function push(idx) {
-      if (outside[idx] || !bgLike[idx]) return;
+      if (outside[idx] || !bgLike[idx] || guard[idx]) return;
       outside[idx] = 1;
       stack[sp++] = idx;
     }
@@ -653,14 +793,14 @@
       if (outside[i]) removed++;
     }
 
-    /* Чуть расширяем фон в светлую кайму, чтобы не было ореола */
-    for (var pass = 0; pass < 2; pass++) {
+    /* Съедаем светлую кайму вокруг штрихов, сами штрихи не трогаем */
+    for (var pass = 0; pass < radius + 1; pass++) {
       var add = [];
 
       for (var y2 = 0; y2 < h; y2++) {
         for (var x2 = 0; x2 < w; x2++) {
           var i2 = y2 * w + x2;
-          if (outside[i2] || !bgLike[i2]) continue;
+          if (outside[i2] || !bgLike[i2] || protect[i2]) continue;
 
           var near =
             (x2 > 0 && outside[i2 - 1]) ||
@@ -799,8 +939,24 @@
   function removeBackground(px, w, h, tolPercent) {
     var total = w * h;
 
+    var clearCount = 0;
+    for (var i = 3; i < px.length; i += 4) {
+      if (px[i] < 16) clearCount++;
+    }
+
+    /* Уже вырезанная картинка: прозрачный фон не трогаем */
+    if (clearCount > total * 0.08) {
+      enhanceContrast(px, w, h, buildToneLut());
+      return true;
+    }
+
     normalizeLighting(px, w, h);
-    var removed = removeLightBackground(px, w, h, tolPercent);
+
+    var lut = buildToneLut();
+    var protect = buildStrokeMask(px, w, h);
+    var removed = removeLightBackground(px, w, h, tolPercent, protect);
+
+    enhanceContrast(px, w, h, lut);
 
     return removed > total * 0.005;
   }
