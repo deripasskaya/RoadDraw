@@ -38,6 +38,29 @@
   var speedMul = 1;
   var muted = false;
   var audio = null;
+  var musicGain = null;
+  var musicFilter = null;
+  var musicTimer = 0;
+  var musicNext = 0;
+  var musicStep = 0;
+  var musicPlaying = false;
+
+  var MUSIC_VOLUME = 0.16;
+
+  /* Спокойная пентатоника и мягкие аккорды */
+  var MUSIC_CHORDS = [
+    [130.81, 164.81, 196.00, 246.94, 523.25],
+    [110.00, 130.81, 164.81, 196.00, 440.00],
+    [87.31, 110.00, 130.81, 164.81, 349.23],
+    [98.00, 123.47, 146.83, 164.81, 392.00]
+  ];
+
+  var MUSIC_MELODY = [
+    0, null, 2, null, 4, null, 3, null,
+    1, null, 4, null, 2, null, 0, null
+  ];
+
+  var MUSIC_NOTES = [523.25, 587.33, 659.25, 783.99, 880.00];
 
   /* ============================================================
      Геометрия сцены
@@ -869,7 +892,126 @@
     var AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
     audio = new AC();
+
+    musicFilter = audio.createBiquadFilter();
+    musicFilter.type = "lowpass";
+    musicFilter.frequency.value = 2200;
+    musicFilter.Q.value = 0.6;
+
+    musicGain = audio.createGain();
+    musicGain.gain.value = 0;
+
+    musicFilter.connect(musicGain);
+    musicGain.connect(audio.destination);
+
     return audio;
+  }
+
+  function musicPad(freq, when, dur, vol) {
+    if (!audio || !musicFilter) return;
+
+    var osc = audio.createOscillator();
+    var gain = audio.createGain();
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, when);
+    osc.detune.setValueAtTime((Math.random() - 0.5) * 5, when);
+
+    gain.gain.setValueAtTime(0, when);
+    gain.gain.linearRampToValueAtTime(vol, when + 1.4);
+    gain.gain.setValueAtTime(vol, when + dur - 1.8);
+    gain.gain.linearRampToValueAtTime(0, when + dur);
+
+    osc.connect(gain);
+    gain.connect(musicFilter);
+    osc.start(when);
+    osc.stop(when + dur + 0.05);
+  }
+
+  function musicBell(freq, when, vol) {
+    if (!audio || !musicFilter) return;
+
+    var osc = audio.createOscillator();
+    var gain = audio.createGain();
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, when);
+
+    gain.gain.setValueAtTime(0, when);
+    gain.gain.linearRampToValueAtTime(vol, when + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + 1.8);
+
+    osc.connect(gain);
+    gain.connect(musicFilter);
+    osc.start(when);
+    osc.stop(when + 1.9);
+  }
+
+  function scheduleMusicStep(step, when) {
+    if (step % 8 === 0) {
+      var chord = MUSIC_CHORDS[Math.floor(step / 8) % MUSIC_CHORDS.length];
+
+      for (var i = 0; i < chord.length; i++) {
+        var vol = i === chord.length - 1 ? 0.045 : 0.11;
+        musicPad(chord[i], when, 9, vol);
+      }
+    }
+
+    var note = MUSIC_MELODY[step % MUSIC_MELODY.length];
+    if (note !== null) {
+      musicBell(MUSIC_NOTES[note], when + 0.12, 0.16);
+    }
+  }
+
+  function musicTick() {
+    if (!musicPlaying || muted || !audio) return;
+
+    var now = audio.currentTime;
+    if (musicNext < now) musicNext = now + 0.05;
+
+    while (musicNext < now + 2.5) {
+      scheduleMusicStep(musicStep, musicNext);
+      musicStep++;
+      musicNext += 1;
+    }
+  }
+
+  function startMusic() {
+    if (muted || musicPlaying) return;
+
+    var ac = ensureAudio();
+    if (!ac) return;
+
+    if (ac.state === "suspended") ac.resume();
+
+    musicPlaying = true;
+    musicStep = 0;
+    musicNext = ac.currentTime + 0.15;
+
+    var now = ac.currentTime;
+    musicGain.gain.cancelScheduledValues(now);
+    musicGain.gain.setValueAtTime(musicGain.gain.value, now);
+    musicGain.gain.linearRampToValueAtTime(MUSIC_VOLUME, now + 2.5);
+
+    musicTick();
+
+    if (!musicTimer) musicTimer = setInterval(musicTick, 500);
+  }
+
+  function stopMusic() {
+    musicPlaying = false;
+
+    if (musicTimer) {
+      clearInterval(musicTimer);
+      musicTimer = 0;
+    }
+
+    if (!audio || !musicGain) return;
+
+    var now = audio.currentTime;
+    musicGain.gain.cancelScheduledValues(now);
+    musicGain.gain.setValueAtTime(musicGain.gain.value, now);
+    musicGain.gain.linearRampToValueAtTime(0, now + 0.5);
   }
 
   function honk() {
@@ -981,8 +1123,22 @@
     soundBtn.textContent = muted ? "🔇" : "🔊";
     soundBtn.setAttribute("aria-pressed", String(!muted));
     soundBtn.setAttribute("aria-label", muted ? "Включить звук" : "Выключить звук");
-    if (!muted) honk();
+
+    if (muted) {
+      stopMusic();
+    } else {
+      honk();
+      startMusic();
+    }
   });
+
+  /* Браузер разрешает звук только после действия пользователя */
+  function unlockAudio() {
+    if (!muted) startMusic();
+  }
+
+  document.addEventListener("pointerdown", unlockAudio, { once: true });
+  document.addEventListener("keydown", unlockAudio, { once: true });
 
   speedInput.addEventListener("input", function () {
     speedMul = parseFloat(speedInput.value) || 1;
@@ -991,9 +1147,11 @@
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) {
       stopLoop();
+      if (musicPlaying) stopMusic();
     } else {
       if (running) startLoop();
       refreshLibrary();
+      if (!muted) startMusic();
     }
   });
 
@@ -1038,6 +1196,14 @@
     get cars() { return cars; },
     get lanes() { return lanes; },
     get library() { return library; },
+    get audioState() {
+      return {
+        state: audio ? audio.state : "none",
+        music: musicPlaying,
+        muted: muted,
+        volume: musicGain ? Math.round(musicGain.gain.value * 1000) / 1000 : 0
+      };
+    },
     refresh: refreshLibrary,
     load: loadLibrary
   };
