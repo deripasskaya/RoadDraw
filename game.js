@@ -21,6 +21,8 @@
   var birds = [];
   var flowers = [];
   var butterflies = [];
+  var firLights = [];
+  var snowflakes = [];
   var G = {};
 
   var imageCache = {};
@@ -116,6 +118,7 @@
     makeBirds();
     makeFlowers();
     makeButterflies();
+    makeSnowfall();
 
     if (!running) draw();
   }
@@ -479,6 +482,23 @@
     }
   }
 
+  function makeSnowfall() {
+    snowflakes = [];
+
+    var count = Math.max(36, Math.min(150, Math.round(W * H / 16000)));
+
+    for (var i = 0; i < count; i++) {
+      snowflakes.push({
+        x: Math.random() * W,
+        y: Math.random() * (H + 20),
+        r: 1 + Math.random() * 2.2,
+        v: 12 + Math.random() * 28,
+        drift: 8 + Math.random() * 18,
+        phase: Math.random() * Math.PI * 2
+      });
+    }
+  }
+
   function drawCloud(x, y, s, alpha) {
     /* Мягкая голубая тень снизу */
     ctx.globalAlpha = alpha * 0.55;
@@ -663,7 +683,8 @@
   function drawHills() {
     var y = G.horizon;
 
-    ctx.fillStyle = "#b9e3c2";
+    /* Заснеженные холмы */
+    ctx.fillStyle = "#eef6ff";
     ctx.beginPath();
     ctx.moveTo(0, y + 26);
     ctx.quadraticCurveTo(W * 0.16, y - 34, W * 0.36, y + 6);
@@ -674,7 +695,7 @@
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = "#a4d8b0";
+    ctx.fillStyle = "#d9e8f8";
     ctx.beginPath();
     ctx.moveTo(0, y + 52);
     ctx.quadraticCurveTo(W * 0.22, y + 16, W * 0.44, y + 44);
@@ -689,56 +710,96 @@
   function drawCurb() {
     var y = G.roadTop;
 
-    /* Узкий бордюр у дороги вместо тротуара с «забором» */
-    ctx.fillStyle = "#eef2f6";
+    /* Снежный бордюр у дороги */
+    ctx.fillStyle = "#f4f9ff";
     ctx.fillRect(0, y - 7, W, 7);
-    ctx.fillStyle = "#98a2ad";
+    ctx.fillStyle = "#b9c9da";
     ctx.fillRect(0, y - 1, W, 1.5);
+  }
+
+  function drawFir(x, baseY, s, sway) {
+    /* Ствол */
+    ctx.fillStyle = "#6b4a2f";
+    ctx.fillRect(x - 2.4 * s, baseY - 16 * s, 4.8 * s, 16 * s);
+
+    var tiers = 4;
+
+    for (var i = 0; i < tiers; i++) {
+      var frac = i / (tiers - 1);
+      var yBottom = baseY - 10 * s - frac * 42 * s;
+      var w = (30 - frac * 19) * s;
+      var h = (26 - frac * 8) * s;
+      var tipX = x + sway * (0.5 + frac * 0.5);
+      var tipY = yBottom - h;
+
+      ctx.fillStyle = i % 2 ? "#2f7d52" : "#256b45";
+      ctx.beginPath();
+      ctx.moveTo(x - w / 2, yBottom);
+      ctx.lineTo(tipX, tipY);
+      ctx.lineTo(x + w / 2, yBottom);
+      ctx.closePath();
+      ctx.fill();
+
+      /* Снег на ветках */
+      ctx.fillStyle = "rgba(248, 252, 255, 0.95)";
+      ctx.beginPath();
+      ctx.moveTo(x - w * 0.26, yBottom - h * 0.42);
+      ctx.lineTo(tipX, tipY);
+      ctx.lineTo(x + w * 0.26, yBottom - h * 0.42);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    /* Снежный сугроб у основания */
+    ctx.fillStyle = "rgba(245, 250, 255, 0.95)";
+    ctx.beginPath();
+    ctx.ellipse(x, baseY + 1, 15 * s, 4 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function addFirLights(x, baseY, s, sway, seed) {
+    var palette = ["#ff5a5a", "#ffd166", "#6ec6ff", "#9dff7a", "#ffb3e6", "#fff3b0"];
+    var tiers = 4;
+
+    for (var i = 0; i < tiers; i++) {
+      var frac = i / (tiers - 1);
+      var yBottom = baseY - 10 * s - frac * 42 * s;
+      var w = (30 - frac * 19) * s;
+      var h = (26 - frac * 8) * s;
+      var n = i === 0 ? 3 : 2;
+
+      for (var k = 0; k < n; k++) {
+        var f = 0.22 + (k / Math.max(1, n - 1)) * 0.58;
+        var halfW = (w / 2) * (1 - f);
+        var side = k % 2 === 0 ? -1 : 1;
+        var r = rndAt(seed * 13 + i * 7 + k * 3 + 50);
+
+        firLights.push({
+          x: x + side * halfW * 0.62 + sway * f,
+          y: yBottom - f * h,
+          color: palette[(r * palette.length) | 0],
+          phase: r * Math.PI * 2,
+          size: (1.4 + r * 1.1) * Math.max(0.7, s)
+        });
+      }
+    }
   }
 
   function drawTrees(t) {
     var unit = Math.max(0.6, Math.min(1.5, H / 820));
     var count = Math.max(6, Math.round(W / 190));
-    var baseY = G.roadTop - 4;
+    var baseY = G.roadTop - 2;
+
+    firLights.length = 0;
 
     for (var i = 0; i < count; i++) {
       var rnd = rndAt(i + 1);
       var x = ((i + 0.5) / count) * W + (rnd - 0.5) * 60;
       var s = (0.7 + rnd * 0.6) * unit;
-      var sway = reducedMotion ? 0 : Math.sin(t * 1.05 + i * 1.7) * 2.4 * s;
+      var sway = reducedMotion ? 0 : Math.sin(t * 0.9 + i * 1.7) * 1.6 * s;
 
-      /* Ствол */
-      ctx.fillStyle = "#9a6b45";
-      ctx.fillRect(x - 3 * s, baseY - 34 * s, 6 * s, 34 * s);
-
-      /* Ветка к кроне — чуть качается вместе с листвой */
-      ctx.strokeStyle = "#8a5e3c";
-      ctx.lineWidth = 2.4 * s;
-      ctx.lineCap = "round";
-      ctx.beginPath();
-      ctx.moveTo(x, baseY - 30 * s);
-      ctx.lineTo(x + sway * 0.6, baseY - 44 * s);
-      ctx.stroke();
-
-      /* Крона */
-      var crown = [
-        [x + sway - 13 * s, baseY - 44 * s, 16 * s],
-        [x + sway + 12 * s, baseY - 46 * s, 17 * s],
-        [x + sway, baseY - 60 * s, 19 * s]
-      ];
-
-      ctx.fillStyle = "#6fbf73";
-      for (var k = 0; k < crown.length; k++) {
-        ctx.beginPath();
-        ctx.arc(crown[k][0], crown[k][1], crown[k][2], 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      /* Светлый блик на листве */
-      ctx.fillStyle = "rgba(168, 226, 160, 0.85)";
-      ctx.beginPath();
-      ctx.arc(x + sway - 6 * s, baseY - 54 * s, 9 * s, 0, Math.PI * 2);
-      ctx.fill();
+      drawFir(x, baseY, s, sway);
+      addFirLights(x, baseY, s, sway, i);
     }
   }
 
@@ -814,15 +875,25 @@
 
   function drawForeground() {
     var y = G.roadBottom;
-    var grass = ctx.createLinearGradient(0, y, 0, H);
-    grass.addColorStop(0, "#84c46c");
-    grass.addColorStop(1, "#5da24c");
-    ctx.fillStyle = grass;
+    var snow = ctx.createLinearGradient(0, y, 0, H);
+    snow.addColorStop(0, "#f3f9ff");
+    snow.addColorStop(1, "#dce8f6");
+    ctx.fillStyle = snow;
     ctx.fillRect(0, y, W, H - y);
 
-    ctx.fillStyle = "#cdd4dc";
+    /* Снежные сугробы у нижнего края */
+    ctx.fillStyle = "rgba(255, 255, 255, 0.72)";
+    for (var i = 0; i < 12; i++) {
+      var r = rndAt(i + 30);
+      var mx = ((i + 0.5) / 12) * W + (r - 0.5) * 40;
+      ctx.beginPath();
+      ctx.ellipse(mx, H - 1, 18 + r * 18, 5 + r * 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = "#f8fcff";
     ctx.fillRect(0, y - 6, W, 6);
-    ctx.fillStyle = "rgba(0, 0, 0, 0.14)";
+    ctx.fillStyle = "rgba(150, 170, 195, 0.35)";
     ctx.fillRect(0, y - 6, W, 1.5);
   }
 
@@ -928,8 +999,9 @@
     if (a <= 0.01) return;
 
     /* Плавное начало выше вершин холмов — без видимой полосы */
-    var top = G.horizon - 52;
-    var solid = G.horizon - 20;
+    var top = Math.round(G.horizon - 52);
+    var solid = Math.round(G.horizon - 20);
+    var gradEnd = solid + 2;
 
     ctx.save();
 
@@ -937,10 +1009,54 @@
     grad.addColorStop(0, "rgba(7, 12, 32, 0)");
     grad.addColorStop(1, "rgba(7, 12, 32, " + a + ")");
     ctx.fillStyle = grad;
-    ctx.fillRect(0, top, W, solid - top + 1);
+    ctx.fillRect(0, top, W, gradEnd - top);
 
     ctx.fillStyle = "rgba(7, 12, 32, " + a + ")";
-    ctx.fillRect(0, solid, W, H - solid);
+    ctx.fillRect(0, gradEnd, W, H - gradEnd);
+
+    ctx.restore();
+  }
+
+  /* Огоньки на ёлках — зажигаются ночью */
+  function drawFirLights(t) {
+    if (night <= 0.05 || !firLights.length) return;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    for (var i = 0; i < firLights.length; i++) {
+      var l = firLights[i];
+      var tw = 0.6 + 0.4 * Math.sin(t * 3 + l.phase);
+
+      ctx.globalAlpha = night * tw;
+      ctx.shadowColor = l.color;
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = l.color;
+      ctx.beginPath();
+      ctx.arc(l.x, l.y, l.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  /* Снегопад */
+  function drawSnowfall(t) {
+    if (!snowflakes.length) return;
+
+    ctx.save();
+    ctx.fillStyle = "#ffffff";
+
+    for (var i = 0; i < snowflakes.length; i++) {
+      var f = snowflakes[i];
+      var y = reducedMotion ? f.y : (f.y + t * f.v) % (H + 20) - 10;
+      var x = reducedMotion ? f.x : f.x + Math.sin(t * 0.6 + f.phase) * f.drift;
+
+      ctx.globalAlpha = 0.55 + 0.35 * Math.sin(t * 1.5 + f.phase);
+      ctx.beginPath();
+      ctx.arc(x, y, f.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     ctx.restore();
   }
@@ -1043,14 +1159,14 @@
     drawHills();
     drawCurb();
     drawTrees(t);
-    drawFlowers(t);
     drawRoad();
     drawForeground();
-    drawGrass(t);
-    drawButterflies(t);
 
     /* Затемняем землю ночью (но не машины) */
     drawNightOverlay();
+
+    /* Огоньки на ёлках — поверх затемнённых деревьев */
+    drawFirLights(t);
 
     for (var li = 0; li < lanes.length; li++) {
       var lane = lanes[li];
@@ -1060,6 +1176,7 @@
     }
 
     drawAllHeadlights();
+    drawSnowfall(t);
   }
 
   /* ============================================================
