@@ -506,19 +506,35 @@
   function drawStars(t, n) {
     if (n < 0.03) return;
 
-    var count = Math.max(10, Math.round(W / 70));
-    var top = G.horizon * 0.85;
+    var count = Math.max(14, Math.round(W / 55));
+    var top = G.horizon * 0.9;
 
     ctx.save();
     for (var i = 0; i < count; i++) {
       var x = rndAt(i + 101) * W;
       var y = rndAt(i + 207) * top;
-      var s = rndAt(i + 311) > 0.85 ? 2 : 1;
-      var tw = 0.5 + 0.5 * Math.sin(t * 1.4 + i * 1.9);
+      var big = rndAt(i + 311) > 0.78;
+      var size = big
+        ? 2.2 + rndAt(i + 401) * 1.6
+        : 1.2 + rndAt(i + 401) * 0.8;
 
-      ctx.globalAlpha = n * (0.35 + 0.65 * tw);
+      var tw = 0.5 + 0.5 * Math.sin(t * 2.2 + i * 1.7);
+      var alpha = n * (0.3 + 0.7 * tw);
+      if (big) alpha = Math.min(1, alpha * 1.2);
+
+      ctx.globalAlpha = alpha;
+
+      if (big) {
+        ctx.shadowColor = "rgba(210, 228, 255, 0.9)";
+        ctx.shadowBlur = 10;
+      } else {
+        ctx.shadowBlur = 0;
+      }
+
       ctx.fillStyle = "#ffffff";
-      ctx.fillRect(x, y, s, s);
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.restore();
   }
@@ -911,11 +927,21 @@
     var a = night * 0.55;
     if (a <= 0.01) return;
 
-    var top = G.horizon - 20;   /* захватываем вершины холмов */
+    /* Плавное начало выше вершин холмов — без видимой полосы */
+    var top = G.horizon - 52;
+    var solid = G.horizon - 20;
 
     ctx.save();
+
+    var grad = ctx.createLinearGradient(0, top, 0, solid);
+    grad.addColorStop(0, "rgba(7, 12, 32, 0)");
+    grad.addColorStop(1, "rgba(7, 12, 32, " + a + ")");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, top, W, solid - top + 1);
+
     ctx.fillStyle = "rgba(7, 12, 32, " + a + ")";
-    ctx.fillRect(0, top, W, H - top);
+    ctx.fillRect(0, solid, W, H - solid);
+
     ctx.restore();
   }
 
