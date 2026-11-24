@@ -68,7 +68,7 @@
       sidewalkTop: sidewalkTop,
       horizon: sidewalkTop - roadH * 0.12,
       centerY: roadTop + roadH * 0.5,
-      farY: roadTop + farH + roadH * 0.02,
+      farY: roadTop + farH - roadH * 0.02,
       nearY: roadTop + roadH * 0.84
     };
 
@@ -775,6 +775,44 @@
     ctx.restore();
   }
 
+  /* Мягкое свечение фар спереди машины — там, где они расположены
+     (на носу, в сторону движения). */
+  function drawHeadlights(c, baseline) {
+    var frontX = c.dir === 1 ? c.x + c.w - 2 : c.x + 2;
+    var hy = baseline - c.h * 0.38;
+    var r = Math.max(8, c.h * 0.16);
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    /* Ореол у фары */
+    var glow = ctx.createRadialGradient(frontX, hy, 1, frontX, hy, r * 2.2);
+    glow.addColorStop(0, "rgba(255, 238, 175, 0.85)");
+    glow.addColorStop(0.4, "rgba(255, 228, 145, 0.3)");
+    glow.addColorStop(1, "rgba(255, 228, 145, 0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(frontX, hy, r * 2.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    /* Луч света вперёд */
+    var len = Math.max(40, c.w * 0.8);
+    var beam = ctx.createLinearGradient(frontX, hy, frontX + c.dir * len, hy);
+    beam.addColorStop(0, "rgba(255, 242, 195, 0.26)");
+    beam.addColorStop(1, "rgba(255, 242, 195, 0)");
+    ctx.fillStyle = beam;
+
+    ctx.beginPath();
+    ctx.moveTo(frontX, hy - r * 0.85);
+    ctx.lineTo(frontX + c.dir * len, hy - len * 0.14);
+    ctx.lineTo(frontX + c.dir * len, hy + len * 0.14);
+    ctx.lineTo(frontX, hy + r * 0.85);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }
+
   function drawCar(c, t) {
     var bob = reducedMotion ? 0 : Math.sin(t * 5.5 + c.phase) * c.h * 0.012;
     var jump = 0;
@@ -806,6 +844,8 @@
     if (c.flip) ctx.scale(-1, 1);
     ctx.drawImage(c.img, -c.w / 2, -c.h, c.w, c.h);
     ctx.restore();
+
+    drawHeadlights(c, baseline);
 
     if (c.bubble > 0) drawBubble(c, baseline);
   }
