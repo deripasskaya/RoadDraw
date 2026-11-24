@@ -545,13 +545,13 @@
       ctx.globalAlpha = alpha;
 
       if (big) {
-        ctx.shadowColor = "rgba(210, 228, 255, 0.9)";
+        ctx.shadowColor = "rgba(255, 226, 140, 0.9)";
         ctx.shadowBlur = 10;
       } else {
         ctx.shadowBlur = 0;
       }
 
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = "#fff1b8";
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
@@ -615,20 +615,20 @@
       ctx.globalAlpha = n;
 
       var mglow = ctx.createRadialGradient(moonX, moonY, moonR * 0.4, moonX, moonY, moonR * 2.6);
-      mglow.addColorStop(0, "rgba(220, 230, 255, 0.5)");
-      mglow.addColorStop(1, "rgba(220, 230, 255, 0)");
+      mglow.addColorStop(0, "rgba(255, 230, 150, 0.5)");
+      mglow.addColorStop(1, "rgba(255, 230, 150, 0)");
       ctx.fillStyle = mglow;
       ctx.beginPath();
       ctx.arc(moonX, moonY, moonR * 2.6, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = "#eaf0ff";
+      ctx.fillStyle = "#ffe9a6";
       ctx.beginPath();
       ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
       ctx.fill();
 
       /* Лёгкая тень-кратер */
-      ctx.fillStyle = "rgba(180, 196, 235, 0.5)";
+      ctx.fillStyle = "rgba(214, 184, 110, 0.45)";
       ctx.beginPath();
       ctx.arc(moonX - moonR * 0.3, moonY - moonR * 0.2, moonR * 0.22, 0, Math.PI * 2);
       ctx.fill();
