@@ -795,21 +795,6 @@
     ctx.arc(frontX, hy, r * 2.2, 0, Math.PI * 2);
     ctx.fill();
 
-    /* Луч света вперёд */
-    var len = Math.max(40, c.w * 0.8);
-    var beam = ctx.createLinearGradient(frontX, hy, frontX + c.dir * len, hy);
-    beam.addColorStop(0, "rgba(255, 242, 195, 0.26)");
-    beam.addColorStop(1, "rgba(255, 242, 195, 0)");
-    ctx.fillStyle = beam;
-
-    ctx.beginPath();
-    ctx.moveTo(frontX, hy - r * 0.85);
-    ctx.lineTo(frontX + c.dir * len, hy - len * 0.14);
-    ctx.lineTo(frontX + c.dir * len, hy + len * 0.14);
-    ctx.lineTo(frontX, hy + r * 0.85);
-    ctx.closePath();
-    ctx.fill();
-
     ctx.restore();
   }
 
