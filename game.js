@@ -622,19 +622,23 @@
       ctx.arc(moonX, moonY, moonR * 2.6, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = "#ffe9a6";
+      /* Месяц: внешний диск минус смещённый внутренний */
+      var cutX = moonX + moonR * 0.55;
+      var cutY = moonY - moonR * 0.12;
+      var cutR = moonR * 0.86;
+
+      ctx.save();
       ctx.beginPath();
       ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.clip();
 
-      /* Лёгкая тень-кратер */
-      ctx.fillStyle = "rgba(214, 184, 110, 0.45)";
       ctx.beginPath();
-      ctx.arc(moonX - moonR * 0.3, moonY - moonR * 0.2, moonR * 0.22, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(moonX + moonR * 0.28, moonY + moonR * 0.3, moonR * 0.16, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2, false);
+      ctx.arc(cutX, cutY, cutR, 0, Math.PI * 2, true);
+      ctx.fillStyle = "#ffe9a6";
+      ctx.fill("evenodd");
+
+      ctx.restore();
 
       ctx.restore();
     }
