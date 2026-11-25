@@ -331,6 +331,11 @@ button,
   accent-color: var(--primary);
 }
 
+.tol b {
+  font-weight: 600;
+  color: var(--ink);
+}
+
 .list {
   display: flex;
   flex-direction: column;

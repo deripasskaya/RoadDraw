@@ -79,8 +79,12 @@
           <span>Чувствительность</span>
           <input id="tolerance" type="range" min="0" max="100" step="5" value="50">
         </label>
+        <label class="tol">
+          <span>Сочность линий <b id="juiceValue">50% · авто</b></span>
+          <input id="juice" type="range" min="0" max="100" step="5" value="50" aria-label="Сочность линий">
+        </label>
       </div>
-      <p class="options-hint muted">Двигайте ползунок — превью обновится сразу. Если фон остался — увеличьте, если пропали детали — уменьшите.</p>
+      <p class="options-hint muted">Двигайте ползунки — превью обновится сразу. «Чувствительность» убирает фон, «Сочность линий» делает штрихи ярче. 50% — авто-уровень.</p>
 
       <div id="list" class="list"></div>
       <p class="list-hint muted">Нос машины на превью должен смотреть вправо. Если он смотрит влево — нажмите «Отразить».</p>

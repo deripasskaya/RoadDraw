@@ -28,6 +28,8 @@
     fileInput: document.getElementById("fileInput"),
     removeBg: document.getElementById("removeBg"),
     tolerance: document.getElementById("tolerance"),
+    juice: document.getElementById("juice"),
+    juiceValue: document.getElementById("juiceValue"),
     list: document.getElementById("list"),
     actions: document.getElementById("actions"),
     addBtn: document.getElementById("addBtn"),
@@ -574,30 +576,6 @@
     }
   }
 
-  function smoothstep(x, a, b) {
-    var t = (x - a) / (b - a);
-    if (t < 0) t = 0;
-    if (t > 1) t = 1;
-    return t * t * (3 - 2 * t);
-  }
-
-  /* Кривая Levels + гамма: бледные штрихи темнеют, бумага уходит в белый */
-  function buildToneLut() {
-    var lut = new Uint8Array(256);
-    var black = 140;
-    var white = 245;
-    var gamma = 1.65;
-
-    for (var i = 0; i < 256; i++) {
-      var v = (i - black) / (white - black);
-      if (v < 0) v = 0;
-      if (v > 1) v = 1;
-      lut[i] = Math.round(255 * Math.pow(v, gamma));
-    }
-
-    return lut;
-  }
-
   /* Маска штрихов: Собель по нормализованной яркости + локальный контраст.
      Тень на бумаге плавная, а карандаш даёт резкий перепад и тёмную сторону. */
   function buildStrokeMask(px, w, h) {
@@ -670,42 +648,130 @@
     return protect;
   }
 
-  /* Тянем контраст на оставшихся пикселях */
-  function enhanceContrast(px, w, h, lut) {
+  /* Авто-уровни + вибранс только для пикселей машины.
+     Меряем 5-й процентиль тёмных и максимум насыщенности и подтягиваем
+     к эталону. juicePercent: 50 = авто, 0 = выкл, 100 = максимум. */
+  function autoTune(px, w, h, juicePercent) {
     var total = w * h;
+    var lumHist = new Uint32Array(256);
+    var satHist = new Uint32Array(256);
+    var count = 0;
+    var i;
 
-    for (var i = 0; i < total; i++) {
+    for (i = 0; i < total; i++) {
       var o = i * 4;
       if (px[o + 3] < 16) continue;
 
       var r = px[o];
       var g = px[o + 1];
       var b = px[o + 2];
-      var mx = Math.max(r, g, b);
-      var mn = Math.min(r, g, b);
-      var l = luma(r, g, b);
-      var sat = mx - mn;
+      var l = luma(r, g, b) | 0;
+      if (l < 0) l = 0;
+      if (l > 255) l = 255;
 
-      /* Светлая малонасыщенная бумага — в чистый белый */
-      if (l >= 238 && sat <= 42) {
-        px[o] = r + (252 - r) * 0.85;
-        px[o + 1] = g + (252 - g) * 0.85;
-        px[o + 2] = b + (252 - b) * 0.85;
+      var s = Math.max(r, g, b) - Math.min(r, g, b);
+
+      lumHist[l]++;
+      satHist[s]++;
+      count++;
+    }
+
+    if (!count) return;
+
+    function percentile(hist, p) {
+      var target = count * p;
+      var acc = 0;
+      for (var v = 0; v < 256; v++) {
+        acc += hist[v];
+        if (acc >= target) return v;
+      }
+      return 255;
+    }
+
+    var p90 = percentile(lumHist, 0.9);
+    var p5 = percentile(lumHist, 0.05);
+    var p99sat = percentile(satHist, 0.99);
+
+    /* Если тёмных пикселей мало, не принимаем бумагу за штрих */
+    if (p5 > p90 - 25) p5 = p90 - 25;
+    if (p5 < 0) p5 = 0;
+
+    var span = Math.max(20, p90 - p5);
+
+    var juice = Math.max(0, Math.min(100, juicePercent)) / 50;
+    var targetDark = 52;
+    var targetWhite = 250;
+
+    var darkOut = p5 + (Math.min(p5, targetDark) - p5) * juice;
+    var whiteOut = p90 + (Math.max(p90, targetWhite) - p90) * juice;
+
+    if (darkOut < 0) darkOut = 0;
+    if (whiteOut > 255) whiteOut = 255;
+
+    var satFactor = 1;
+    if (p99sat >= 10) {
+      satFactor = 165 / p99sat;
+      if (satFactor < 0.7) satFactor = 0.7;
+      if (satFactor > 1.5) satFactor = 1.5;
+    }
+
+    satFactor = 1 + (satFactor - 1) * juice;
+    if (satFactor < 0.6) satFactor = 0.6;
+    if (satFactor > 2.0) satFactor = 2.0;
+
+    var lut = new Uint8Array(256);
+
+    for (var v2 = 0; v2 < 256; v2++) {
+      var t = (v2 - p5) / span;
+      if (t < 0) t = 0;
+      if (t > 1) t = 1;
+      lut[v2] = Math.round(darkOut + (whiteOut - darkOut) * t);
+    }
+
+    for (i = 0; i < total; i++) {
+      var o2 = i * 4;
+      if (px[o2 + 3] < 16) continue;
+
+      var r2 = px[o2];
+      var g2 = px[o2 + 1];
+      var b2 = px[o2 + 2];
+      var l2 = luma(r2, g2, b2);
+      var s2 = Math.max(r2, g2, b2) - Math.min(r2, g2, b2);
+
+      /* Бумага внутри контура — в чистый белый */
+      if (l2 >= 235 && s2 <= 42) {
+        px[o2] = r2 + (252 - r2) * 0.85;
+        px[o2 + 1] = g2 + (252 - g2) * 0.85;
+        px[o2 + 2] = b2 + (252 - b2) * 0.85;
         continue;
       }
 
-      var idx = l | 0;
+      var idx = l2 | 0;
       if (idx < 0) idx = 0;
       if (idx > 255) idx = 255;
 
-      var target = lut[idx];
-      var scale = target / Math.max(1, l);
-      var blend = smoothstep(sat, 10, 55);
-      var eff = scale + (1 - scale) * blend;
+      var newL = lut[idx];
 
-      px[o] = r * eff;
-      px[o + 1] = g * eff;
-      px[o + 2] = b * eff;
+      /* Vibrance: малонасыщенные цвета усиливаем сильнее,
+         а перенасыщенные — наоборот, слегка приглушаем */
+      var weight;
+      if (satFactor >= 1) {
+        weight = 1 - s2 / 255;
+      } else {
+        weight = s2 / 255;
+      }
+
+      var vib = 1 + (satFactor - 1) * weight;
+      if (vib < 0.5) vib = 0.5;
+      if (vib > 2.2) vib = 2.2;
+
+      var nr = newL + (r2 - l2) * vib;
+      var ng = newL + (g2 - l2) * vib;
+      var nb = newL + (b2 - l2) * vib;
+
+      px[o2] = nr < 0 ? 0 : nr > 255 ? 255 : nr;
+      px[o2 + 1] = ng < 0 ? 0 : ng > 255 ? 255 : ng;
+      px[o2 + 2] = nb < 0 ? 0 : nb > 255 ? 255 : nb;
     }
   }
 
@@ -936,7 +1002,7 @@
     return filled;
   }
 
-  function removeBackground(px, w, h, tolPercent) {
+  function removeBackground(px, w, h, tolPercent, juicePercent) {
     var total = w * h;
 
     var clearCount = 0;
@@ -946,17 +1012,16 @@
 
     /* Уже вырезанная картинка: прозрачный фон не трогаем */
     if (clearCount > total * 0.08) {
-      enhanceContrast(px, w, h, buildToneLut());
+      autoTune(px, w, h, juicePercent);
       return true;
     }
 
     normalizeLighting(px, w, h);
 
-    var lut = buildToneLut();
     var protect = buildStrokeMask(px, w, h);
     var removed = removeLightBackground(px, w, h, tolPercent, protect);
 
-    enhanceContrast(px, w, h, lut);
+    autoTune(px, w, h, juicePercent);
 
     return removed > total * 0.005;
   }
@@ -983,7 +1048,7 @@
     return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
   }
 
-  function processPhoto(img, removeBg, tolPercent) {
+  function processPhoto(img, removeBg, tolPercent, juicePercent) {
     var nw = img.naturalWidth || img.width;
     var nh = img.naturalHeight || img.height;
     if (!nw || !nh) throw new Error("Пустое изображение");
@@ -1010,11 +1075,25 @@
     var warning = "";
 
     if (removeBg) {
-      var ok = removeBackground(px, w, h, tolPercent);
+      var ok = removeBackground(px, w, h, tolPercent, juicePercent);
       if (!ok) {
         warning = "Не удалось отделить фон. Сфотографируйте рисунок на однотонном листе покрупнее.";
       }
       c.putImageData(data, 0, 0);
+    } else {
+      /* Прозрачный PNG: фон уже убран, но «сочность» всё равно работает */
+      var hasClear = false;
+      for (var ai = 3; ai < px.length; ai += 4) {
+        if (px[ai] < 16) {
+          hasClear = true;
+          break;
+        }
+      }
+
+      if (hasClear) {
+        autoTune(px, w, h, juicePercent);
+        c.putImageData(data, 0, 0);
+      }
     }
 
     var box = alphaBounds(px, w, h);
@@ -1277,7 +1356,12 @@
     await new Promise(function (r) { setTimeout(r, 30); });
 
     try {
-      item.result = processPhoto(item.img, els.removeBg.checked, parseInt(els.tolerance.value, 10));
+      item.result = processPhoto(
+        item.img,
+        els.removeBg.checked,
+        parseInt(els.tolerance.value, 10),
+        parseInt(els.juice.value, 10)
+      );
       item.status = "ready";
     } catch (e) {
       item.result = null;
@@ -1609,6 +1693,19 @@
     clearTimeout(reprocessTimer);
     reprocessTimer = setTimeout(reprocessAll, 280);
   });
+
+  function updateJuiceLabel() {
+    var v = parseInt(els.juice.value, 10) || 0;
+    els.juiceValue.textContent = v === 50 ? "50% · авто" : v + "%";
+  }
+
+  els.juice.addEventListener("input", function () {
+    updateJuiceLabel();
+    clearTimeout(reprocessTimer);
+    reprocessTimer = setTimeout(reprocessAll, 280);
+  });
+
+  updateJuiceLabel();
 
   els.addBtn.addEventListener("click", commitAll);
   els.clearRoadBtn.addEventListener("click", clearRoad);
