@@ -648,9 +648,89 @@
     return protect;
   }
 
-  /* Авто-уровни + вибранс только для пикселей машины.
-     Меряем 5-й процентиль тёмных и максимум насыщенности и подтягиваем
-     к эталону. juicePercent: 50 = авто, 0 = выкл, 100 = максимум. */
+  /* Мягкое уплотнение: Multiply с размытой копией (radius 1–2 px).
+     Работает только по непрозрачным пикселям, альфа не меняется. */
+  function blurMultiply(px, w, h, strength) {
+    if (strength <= 0.001) return;
+
+    var total = w * h;
+    var radius = Math.max(1, Math.round(Math.min(w, h) / 400));
+    var hr = new Float32Array(total);
+    var hg = new Float32Array(total);
+    var hb = new Float32Array(total);
+    var ha = new Float32Array(total);
+    var x, y, k, o, i;
+
+    /* Горизонтальный проход с учётом альфы */
+    for (y = 0; y < h; y++) {
+      for (x = 0; x < w; x++) {
+        var x0 = x - radius < 0 ? 0 : x - radius;
+        var x1 = x + radius > w - 1 ? w - 1 : x + radius;
+        var sr = 0;
+        var sg = 0;
+        var sb = 0;
+        var sa = 0;
+
+        for (k = x0; k <= x1; k++) {
+          o = (y * w + k) * 4;
+          var a = px[o + 3] / 255;
+          if (a <= 0) continue;
+          sr += px[o] * a;
+          sg += px[o + 1] * a;
+          sb += px[o + 2] * a;
+          sa += a;
+        }
+
+        i = y * w + x;
+        hr[i] = sr;
+        hg[i] = sg;
+        hb[i] = sb;
+        ha[i] = sa;
+      }
+    }
+
+    /* Вертикальный проход и мягкое умножение */
+    for (y = 0; y < h; y++) {
+      for (x = 0; x < w; x++) {
+        var y0 = y - radius < 0 ? 0 : y - radius;
+        var y1 = y + radius > h - 1 ? h - 1 : y + radius;
+        var sr2 = 0;
+        var sg2 = 0;
+        var sb2 = 0;
+        var sa2 = 0;
+
+        for (k = y0; k <= y1; k++) {
+          i = k * w + x;
+          sr2 += hr[i];
+          sg2 += hg[i];
+          sb2 += hb[i];
+          sa2 += ha[i];
+        }
+
+        if (sa2 <= 0.0001) continue;
+
+        var br = sr2 / sa2;
+        var bg = sg2 / sa2;
+        var bb = sb2 / sa2;
+
+        o = (y * w + x) * 4;
+        var rr = px[o];
+        var gg = px[o + 1];
+        var b2 = px[o + 2];
+
+        var mr = rr * br / 255;
+        var mg = gg * bg / 255;
+        var mb = b2 * bb / 255;
+
+        px[o] = rr + (mr - rr) * strength;
+        px[o + 1] = gg + (mg - gg) * strength;
+        px[o + 2] = b2 + (mb - b2) * strength;
+      }
+    }
+  }
+
+  /* Мягкое усиление без «ксерокса»: гамма + Multiply с размытой копией.
+     juicePercent: 50 = авто, 0 = выкл, 100 = максимум. */
   function autoTune(px, w, h, juicePercent) {
     var total = w * h;
     var lumHist = new Uint32Array(256);
@@ -692,41 +772,52 @@
     var p5 = percentile(lumHist, 0.05);
     var p99sat = percentile(satHist, 0.99);
 
-    /* Если тёмных пикселей мало, не принимаем бумагу за штрих */
     if (p5 > p90 - 25) p5 = p90 - 25;
     if (p5 < 0) p5 = 0;
 
-    var span = Math.max(20, p90 - p5);
-
     var juice = Math.max(0, Math.min(100, juicePercent)) / 50;
-    var targetDark = 52;
-    var targetWhite = 250;
 
-    var darkOut = p5 + (Math.min(p5, targetDark) - p5) * juice;
-    var whiteOut = p90 + (Math.max(p90, targetWhite) - p90) * juice;
+    /* Мягкая гамма: сильнее для бледных рисунков, без порогов */
+    var faint = (p5 - 60) / 160;
+    if (faint < 0) faint = 0;
+    if (faint > 1) faint = 1;
 
-    if (darkOut < 0) darkOut = 0;
-    if (whiteOut > 255) whiteOut = 255;
+    var gamma = 1 + faint * 0.8 * juice;
+    if (gamma > 2.1) gamma = 2.1;
 
+    /* 1) Гамма по яркости, оттенок сохраняем */
+    for (i = 0; i < total; i++) {
+      var o1 = i * 4;
+      if (px[o1 + 3] < 16) continue;
+
+      var r1 = px[o1];
+      var g1 = px[o1 + 1];
+      var b1 = px[o1 + 2];
+      var l1 = luma(r1, g1, b1);
+
+      var nl = 255 * Math.pow(l1 / 255, gamma);
+      var scale = l1 > 0.5 ? nl / l1 : 1;
+
+      px[o1] = r1 * scale;
+      px[o1 + 1] = g1 * scale;
+      px[o1 + 2] = b1 * scale;
+    }
+
+    /* 2) Мягкое уплотнение штриховки */
+    var multStrength = Math.max(0, Math.min(100, juicePercent)) / 100 * 0.9;
+    blurMultiply(px, w, h, multStrength);
+
+    /* 3) Авто-насыщенность (Vibrance) */
     var satFactor = 1;
     if (p99sat >= 10) {
-      satFactor = 165 / p99sat;
+      satFactor = 180 / p99sat;
       if (satFactor < 0.7) satFactor = 0.7;
-      if (satFactor > 1.5) satFactor = 1.5;
+      if (satFactor > 1.7) satFactor = 1.7;
     }
 
     satFactor = 1 + (satFactor - 1) * juice;
     if (satFactor < 0.6) satFactor = 0.6;
     if (satFactor > 2.0) satFactor = 2.0;
-
-    var lut = new Uint8Array(256);
-
-    for (var v2 = 0; v2 < 256; v2++) {
-      var t = (v2 - p5) / span;
-      if (t < 0) t = 0;
-      if (t > 1) t = 1;
-      lut[v2] = Math.round(darkOut + (whiteOut - darkOut) * t);
-    }
 
     for (i = 0; i < total; i++) {
       var o2 = i * 4;
@@ -738,22 +829,6 @@
       var l2 = luma(r2, g2, b2);
       var s2 = Math.max(r2, g2, b2) - Math.min(r2, g2, b2);
 
-      /* Бумага внутри контура — в чистый белый */
-      if (l2 >= 235 && s2 <= 42) {
-        px[o2] = r2 + (252 - r2) * 0.85;
-        px[o2 + 1] = g2 + (252 - g2) * 0.85;
-        px[o2 + 2] = b2 + (252 - b2) * 0.85;
-        continue;
-      }
-
-      var idx = l2 | 0;
-      if (idx < 0) idx = 0;
-      if (idx > 255) idx = 255;
-
-      var newL = lut[idx];
-
-      /* Vibrance: малонасыщенные цвета усиливаем сильнее,
-         а перенасыщенные — наоборот, слегка приглушаем */
       var weight;
       if (satFactor >= 1) {
         weight = 1 - s2 / 255;
@@ -765,9 +840,25 @@
       if (vib < 0.5) vib = 0.5;
       if (vib > 2.2) vib = 2.2;
 
-      var nr = newL + (r2 - l2) * vib;
-      var ng = newL + (g2 - l2) * vib;
-      var nb = newL + (b2 - l2) * vib;
+      var nr = l2 + (r2 - l2) * vib;
+      var ng = l2 + (g2 - l2) * vib;
+      var nb = l2 + (b2 - l2) * vib;
+
+      /* Мягкая подтяжка только чистой бумаги: цветную штриховку не трогаем */
+      var brightness = (l2 - 225) / 20;
+      if (brightness < 0) brightness = 0;
+      if (brightness > 1) brightness = 1;
+      brightness = brightness * brightness * (3 - 2 * brightness);
+
+      var neutral = 1 - (s2 - 3) / 6;
+      if (neutral < 0) neutral = 0;
+      if (neutral > 1) neutral = 1;
+
+      var paper = brightness * neutral * 0.95;
+
+      nr = nr + (250 - nr) * paper;
+      ng = ng + (250 - ng) * paper;
+      nb = nb + (250 - nb) * paper;
 
       px[o2] = nr < 0 ? 0 : nr > 255 ? 255 : nr;
       px[o2 + 1] = ng < 0 ? 0 : ng > 255 ? 255 : ng;
@@ -784,7 +875,7 @@
     var slider = Math.max(0, Math.min(100, tolPercent));
 
     var lThresh = 210 - slider * 0.55;
-    var satThresh = 40 + slider * 0.3;
+    var satThresh = 7 + slider * 0.07;
     var tol = 35 + slider * 1.0;
     var tol2 = tol * tol;
 
