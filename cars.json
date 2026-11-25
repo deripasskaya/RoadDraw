@@ -33,5 +33,35 @@
     "file": "assets/cars/car-mwwmiap0-1-1-hrf.png",
     "name": "Машина",
     "facing": "right"
+  },
+  {
+    "file": "assets/cars/car-mwwpdarq-1-1-1er.png",
+    "name": "Машина",
+    "facing": "left"
+  },
+  {
+    "file": "assets/cars/car-mwwpdarq-1-2-e3m.png",
+    "name": "Машина",
+    "facing": "left"
+  },
+  {
+    "file": "assets/cars/car-mwwpdarq-1-3-kpl.png",
+    "name": "Машина",
+    "facing": "right"
+  },
+  {
+    "file": "assets/cars/car-mwwpdarq-1-4-grd.png",
+    "name": "Машина",
+    "facing": "left"
+  },
+  {
+    "file": "assets/cars/car-mwwpdarq-1-5-cof.png",
+    "name": "Машина",
+    "facing": "left"
+  },
+  {
+    "file": "assets/cars/car-mwwpdarq-1-6-snb.png",
+    "name": "Машина",
+    "facing": "right"
   }
 ]
