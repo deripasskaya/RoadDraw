@@ -28,5 +28,10 @@
     "file": "assets/cars/car-mwuwbupg-1-1-uqc.png",
     "name": "Машина",
     "facing": "left"
+  },
+  {
+    "file": "assets/cars/car-mwwmiap0-1-1-hrf.png",
+    "name": "Машина",
+    "facing": "right"
   }
 ]
