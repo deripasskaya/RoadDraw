@@ -2028,12 +2028,13 @@
     ctx.fill();
     ctx.stroke();
 
-    /* Крыло */
+    /* Крыло со стреловидностью назад */
     ctx.fillStyle = "#e6eef8";
     ctx.beginPath();
-    ctx.moveTo(-7 * s, 2 * s);
-    ctx.quadraticCurveTo(6 * s, 3 * s, 11 * s, 15 * s);
-    ctx.quadraticCurveTo(0, 17 * s, -11 * s, 8 * s);
+    ctx.moveTo(5 * s, 2 * s);
+    ctx.quadraticCurveTo(2 * s, 9 * s, -4 * s, 15 * s);
+    ctx.quadraticCurveTo(-8 * s, 15 * s, -9 * s, 11 * s);
+    ctx.quadraticCurveTo(-10 * s, 8 * s, -9 * s, 5 * s);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
@@ -2041,7 +2042,7 @@
     /* Красный кончик крыла */
     ctx.fillStyle = "#e2574a";
     ctx.beginPath();
-    ctx.ellipse(6 * s, 13 * s, 4.5 * s, 2.2 * s, 0.35, 0, Math.PI * 2);
+    ctx.ellipse(-6 * s, 13 * s, 4.2 * s, 2 * s, 0.45, 0, Math.PI * 2);
     ctx.fill();
 
     /* Хвостовой киль */
