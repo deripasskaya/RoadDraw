@@ -408,6 +408,17 @@
     if (plane) {
       plane.x += plane.dir * plane.speed * dt;
 
+      /* Мотор включается, только когда нос самолёта уже в кадре */
+      if (!plane.soundArmed) {
+        var noseX = plane.x + plane.dir * 29 * plane.s;
+        var onScreen = plane.dir === 1 ? noseX > 0 : noseX < W;
+
+        if (onScreen) {
+          plane.soundArmed = true;
+          if (!muted) startPlaneSound();
+        }
+      }
+
       var margin = plane.bannerW + 90;
       var flownAway = plane.dir === 1 ? plane.x > W + margin : plane.x < -margin;
 
@@ -751,10 +762,9 @@
       fontSize: fontSize,
       bannerW: bannerW,
       bannerH: bannerH,
-      text: text
+      text: text,
+      soundArmed: false
     };
-
-    startPlaneSound();
   }
 
   function drawPlane(t) {
@@ -1773,7 +1783,7 @@
       pauseBtn.setAttribute("aria-label", "Пауза");
       pauseBtn.title = "Пауза";
       startLoop();
-      if (!muted && plane) startPlaneSound();
+      if (!muted && plane && plane.soundArmed) startPlaneSound();
     } else {
       pauseBtn.textContent = "▶";
       pauseBtn.setAttribute("aria-label", "Продолжить");
@@ -1796,7 +1806,7 @@
     } else {
       honk();
       startMusic();
-      if (plane) startPlaneSound();
+      if (plane && plane.soundArmed) startPlaneSound();
     }
   });
 
@@ -1804,7 +1814,7 @@
   function unlockAudio() {
     if (!muted) {
       startMusic();
-      if (plane) startPlaneSound();
+      if (plane && plane.soundArmed) startPlaneSound();
     }
   }
 
@@ -1825,7 +1835,7 @@
       refreshLibrary();
       if (!muted) {
         startMusic();
-        if (plane) startPlaneSound();
+        if (plane && plane.soundArmed) startPlaneSound();
       }
     }
   });
