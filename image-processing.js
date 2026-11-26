@@ -1107,7 +1107,7 @@
     return filled;
   }
 
-  function removeBackground(px, w, h, tolPercent, juicePercent) {
+  function removeBackgroundFlood(px, w, h, tolPercent, juicePercent) {
     var total = w * h;
 
     var clearCount = 0;
@@ -1129,6 +1129,186 @@
     autoTune(px, w, h, juicePercent);
 
     return removed > total * 0.005;
+  }
+
+  /* Заливаем внутренние дыры в бинарной маске: всё, что не связано
+     с краем кадра, считаем частью силуэта рисунка. */
+  function fillMaskHoles(mask, w, h) {
+    var total = w * h;
+    var outside = new Uint8Array(total);
+    var stack = new Int32Array(total);
+    var sp = 0;
+
+    function push(idx) {
+      if (outside[idx] || mask[idx]) return;
+      outside[idx] = 1;
+      stack[sp++] = idx;
+    }
+
+    for (var x = 0; x < w; x++) {
+      push(x);
+      push((h - 1) * w + x);
+    }
+    for (var y = 0; y < h; y++) {
+      push(y * w);
+      push(y * w + w - 1);
+    }
+
+    while (sp > 0) {
+      var idx2 = stack[--sp];
+      var ix = idx2 % w;
+      var iy = (idx2 / w) | 0;
+
+      if (ix > 0) push(idx2 - 1);
+      if (ix < w - 1) push(idx2 + 1);
+      if (iy > 0) push(idx2 - w);
+      if (iy < h - 1) push(idx2 + w);
+    }
+
+    var filled = new Uint8Array(total);
+    for (var i = 0; i < total; i++) {
+      filled[i] = outside[i] ? 0 : 1;
+    }
+    return filled;
+  }
+
+  /* Оставляем крупные силуэты (машину и её отдельные крупные детали),
+     убирая пылинки, случайные чёрточки и белый мусор. */
+  function keepMainSilhouetteComponents(mask, w, h) {
+    var total = w * h;
+    var labels = new Int32Array(total);
+    var stack = new Int32Array(total);
+    var areas = [];
+    var i;
+
+    for (i = 0; i < total; i++) labels[i] = -1;
+
+    var nextLabel = 0;
+
+    for (i = 0; i < total; i++) {
+      if (!mask[i] || labels[i] !== -1) continue;
+
+      var sp = 0;
+      stack[sp++] = i;
+      labels[i] = nextLabel;
+      var area = 0;
+
+      while (sp > 0) {
+        var idx = stack[--sp];
+        var x = idx % w;
+        var y = (idx / w) | 0;
+        area++;
+
+        if (x > 0 && mask[idx - 1] && labels[idx - 1] === -1) {
+          labels[idx - 1] = nextLabel;
+          stack[sp++] = idx - 1;
+        }
+        if (x < w - 1 && mask[idx + 1] && labels[idx + 1] === -1) {
+          labels[idx + 1] = nextLabel;
+          stack[sp++] = idx + 1;
+        }
+        if (y > 0 && mask[idx - w] && labels[idx - w] === -1) {
+          labels[idx - w] = nextLabel;
+          stack[sp++] = idx - w;
+        }
+        if (y < h - 1 && mask[idx + w] && labels[idx + w] === -1) {
+          labels[idx + w] = nextLabel;
+          stack[sp++] = idx + w;
+        }
+      }
+
+      areas.push(area);
+      nextLabel++;
+    }
+
+    var largest = 0;
+    for (i = 0; i < areas.length; i++) {
+      if (areas[i] > largest) largest = areas[i];
+    }
+
+    var minArea = Math.max(150, Math.round(largest * 0.03));
+
+    for (i = 0; i < total; i++) {
+      var label = labels[i];
+      if (label !== -1 && areas[label] < minArea) mask[i] = 0;
+    }
+  }
+
+  /* Новый способ: строим силуэт из штрихов, закрываем мелкие разрывы
+     обводки и заливаем внутреннюю часть. Бумага снаружи силуэта
+     становится прозрачной, а белый кузов внутри сохраняется. */
+  function removeBackgroundSilhouette(px, w, h, tolPercent, juicePercent) {
+    var total = w * h;
+    var clearCount = 0;
+    var i;
+
+    for (i = 3; i < px.length; i += 4) {
+      if (px[i] < 16) clearCount++;
+    }
+
+    if (clearCount > total * 0.08) {
+      autoTune(px, w, h, juicePercent);
+      return true;
+    }
+
+    normalizeLighting(px, w, h);
+
+    var slider = Math.max(0, Math.min(100, tolPercent));
+    var lumaCut = 160 - slider * 0.35;
+    var satCut = 28 + slider * 0.17;
+
+    var wasClear = new Uint8Array(total);
+    var protect = buildStrokeMask(px, w, h);
+    var ink = new Uint8Array(total);
+
+    for (i = 0; i < total; i++) {
+      var o = i * 4;
+
+      if (px[o + 3] < 16) {
+        wasClear[i] = 1;
+        continue;
+      }
+
+      var r = px[o];
+      var g = px[o + 1];
+      var b = px[o + 2];
+      var mx = Math.max(r, g, b);
+      var mn = Math.min(r, g, b);
+
+      if (protect[i] || luma(r, g, b) < lumaCut || mx - mn > satCut) {
+        ink[i] = 1;
+      }
+    }
+
+    var closeR = Math.max(3, Math.min(12, Math.round(Math.min(w, h) / 55)));
+    var closed = morphClose(ink, w, h, closeR);
+    var silhouette = fillMaskHoles(closed, w, h);
+    keepMainSilhouetteComponents(silhouette, w, h);
+
+    var opaque = 0;
+
+    for (i = 0; i < total; i++) {
+      if (silhouette[i] && !wasClear[i]) {
+        px[i * 4 + 3] = 255;
+        opaque++;
+      } else {
+        px[i * 4 + 3] = 0;
+      }
+    }
+
+    autoTune(px, w, h, juicePercent);
+    featherAlpha(px, w, h, 1);
+    decontaminateEdgeColors(px, w, h);
+
+    for (i = 0; i < total; i++) {
+      if (wasClear[i]) px[i * 4 + 3] = 0;
+    }
+
+    return opaque > total * 0.005;
+  }
+
+  function removeBackground(px, w, h, tolPercent, juicePercent) {
+    return removeBackgroundSilhouette(px, w, h, tolPercent, juicePercent);
   }
 
   function alphaBounds(px, w, h) {
