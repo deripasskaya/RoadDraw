@@ -48,8 +48,15 @@
   var musicPauseTimer = 0;
   var musicPlaying = false;
 
-  var MUSIC_VOLUME = 0.22;
+  var planeSound = null;
+  var planeSoundFadeTimer = 0;
+  var planeSoundPauseTimer = 0;
+  var planeSoundWanted = false;
+
+  var MUSIC_VOLUME = 0.16;
   var MUSIC_SRC = "assets/audio/derevenskiy-rassvet.mp3";
+  var PLANE_SOUND_VOLUME = 0.34;
+  var PLANE_SOUND_SRC = "assets/audio/plane-motor.mp3";
 
   /* Время суток: 0 = полночь, 0.25 = рассвет, 0.5 = полдень, 0.75 = закат */
   var dayPhase = 0.45;
@@ -405,6 +412,7 @@
 
       if (flownAway) {
         plane = null;
+        stopPlaneSound();
         planeTimer = 45 + Math.random() * 45;
       }
     } else {
@@ -736,6 +744,8 @@
       bannerW: bannerW,
       bannerH: bannerH
     };
+
+    startPlaneSound();
   }
 
   function drawPlane(t) {
@@ -1587,6 +1597,78 @@
     }, 550);
   }
 
+  function ensurePlaneSound() {
+    if (planeSound) return planeSound;
+
+    planeSound = new Audio(PLANE_SOUND_SRC);
+    planeSound.loop = true;
+    planeSound.preload = "auto";
+    planeSound.volume = 0;
+    planeSound.setAttribute("playsinline", "");
+
+    planeSound.addEventListener("error", function () {
+      planeSoundWanted = false;
+    });
+
+    return planeSound;
+  }
+
+  function fadePlaneSound(to, duration) {
+    var el = ensurePlaneSound();
+    if (!el) return;
+
+    clearInterval(planeSoundFadeTimer);
+
+    var from = el.volume;
+    var start = Date.now();
+
+    planeSoundFadeTimer = setInterval(function () {
+      var p = Math.min(1, (Date.now() - start) / duration);
+      el.volume = Math.max(0, Math.min(1, from + (to - from) * p));
+
+      if (p >= 1) {
+        clearInterval(planeSoundFadeTimer);
+        planeSoundFadeTimer = 0;
+      }
+    }, 40);
+  }
+
+  function startPlaneSound() {
+    if (muted || !plane) return;
+
+    var el = ensurePlaneSound();
+    if (!el) return;
+
+    planeSoundWanted = true;
+    clearTimeout(planeSoundPauseTimer);
+
+    var played = el.play();
+
+    if (played && played.then) {
+      played.then(function () {
+        if (planeSoundWanted) fadePlaneSound(PLANE_SOUND_VOLUME, 1200);
+      }).catch(function () {
+        planeSoundWanted = false;
+        el.volume = 0;
+      });
+    } else {
+      fadePlaneSound(PLANE_SOUND_VOLUME, 1200);
+    }
+  }
+
+  function stopPlaneSound() {
+    planeSoundWanted = false;
+
+    if (!planeSound) return;
+
+    fadePlaneSound(0, 700);
+
+    clearTimeout(planeSoundPauseTimer);
+    planeSoundPauseTimer = setTimeout(function () {
+      if (!planeSoundWanted && planeSound) planeSound.pause();
+    }, 750);
+  }
+
   function honk() {
     if (muted) return;
 
@@ -1682,12 +1764,14 @@
       pauseBtn.setAttribute("aria-label", "Пауза");
       pauseBtn.title = "Пауза";
       startLoop();
+      if (!muted && plane) startPlaneSound();
     } else {
       pauseBtn.textContent = "▶";
       pauseBtn.setAttribute("aria-label", "Продолжить");
       pauseBtn.title = "Продолжить";
       stopLoop();
       draw();
+      stopPlaneSound();
     }
   });
 
@@ -1699,15 +1783,20 @@
 
     if (muted) {
       stopMusic();
+      stopPlaneSound();
     } else {
       honk();
       startMusic();
+      if (plane) startPlaneSound();
     }
   });
 
   /* Браузер разрешает звук только после действия пользователя */
   function unlockAudio() {
-    if (!muted) startMusic();
+    if (!muted) {
+      startMusic();
+      if (plane) startPlaneSound();
+    }
   }
 
   document.addEventListener("pointerdown", unlockAudio, { once: true });
@@ -1721,10 +1810,14 @@
     if (document.hidden) {
       stopLoop();
       if (musicPlaying) stopMusic();
+      stopPlaneSound();
     } else {
       if (running) startLoop();
       refreshLibrary();
-      if (!muted) startMusic();
+      if (!muted) {
+        startMusic();
+        if (plane) startPlaneSound();
+      }
     }
   });
 
