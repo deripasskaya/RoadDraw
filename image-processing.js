@@ -1399,10 +1399,14 @@
       var b = px[o + 2];
       var mx = Math.max(r, g, b);
       var mn = Math.min(r, g, b);
+      var lum = luma(r, g, b);
+      var sat = mx - mn;
+      var isInk = lum < lumaCut || sat > satCut;
 
-      if (protect[i] || luma(r, g, b) < lumaCut || mx - mn > satCut) {
-        ink[i] = 1;
-      }
+      /* Светлую бумагу не защищаем даже если у неё нашёлся край. */
+      if (!isInk && protect[i] && lum < 215) isInk = true;
+
+      if (isInk) ink[i] = 1;
     }
 
     var closeR = Math.max(4, Math.min(20, Math.round(Math.min(w, h) / 32)));
