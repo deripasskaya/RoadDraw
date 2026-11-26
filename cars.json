@@ -1,1 +1,17 @@
-[]
+[
+  {
+    "file": "assets/cars/car-mwy5gun2-1-1-mob.png",
+    "name": "Машина",
+    "facing": "right"
+  },
+  {
+    "file": "assets/cars/car-mwy5gun2-1-2-beg.png",
+    "name": "Машина",
+    "facing": "right"
+  },
+  {
+    "file": "assets/cars/car-mwy5gun2-1-3-yj5.png",
+    "name": "Машина",
+    "facing": "right"
+  }
+]
