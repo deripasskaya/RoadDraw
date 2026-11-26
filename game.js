@@ -1817,12 +1817,17 @@
     var tailX = p.x - dir * 18 * s;
     var nearX = p.x - dir * (22 * s + gap);
     var bannerY = py + 5 * s;
-    var bx0 = dir === 1 ? nearX - bw : nearX;
     var by0 = bannerY - bh / 2;
-    var farX = dir === 1 ? bx0 : bx0 + bw;
-    var nearEdge = dir === 1 ? bx0 + bw : bx0;
-    var wave = reducedMotion ? 0 : Math.sin(t * 2.6 + p.phase) * 2.6 * s;
+    var nearEdge = nearX;
+    var farX = nearEdge - dir * bw;
+    var sag = 2 * s;
+    var amp = reducedMotion ? 0 : 3.4 * s;
     var prop = reducedMotion ? 0.5 : Math.abs(Math.sin(t * 28 + p.phase));
+
+    function edgeWave(u, shift) {
+      return (Math.sin(u * 3.1 * Math.PI + t * 3.2 + p.phase + shift) * amp +
+              Math.sin(u * 5.3 * Math.PI + t * 4.4 + p.phase * 1.7 + shift) * amp * 0.32) * u;
+    }
 
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -1832,25 +1837,45 @@
     ctx.lineWidth = Math.max(1, 1.1 * s);
     ctx.beginPath();
     ctx.moveTo(tailX, py - 2 * s);
-    ctx.quadraticCurveTo((tailX + nearX) / 2, by0 - 3 * s, nearEdge, by0);
+    ctx.quadraticCurveTo((tailX + nearEdge) / 2, by0 - 3 * s, nearEdge, by0);
     ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(tailX, py + 2 * s);
-    ctx.quadraticCurveTo((tailX + nearX) / 2, by0 + bh + 3 * s, nearEdge, by0 + bh);
+    ctx.quadraticCurveTo((tailX + nearEdge) / 2, by0 + bh + 3 * s, nearEdge, by0 + bh);
     ctx.stroke();
 
-    /* Полотно: мягкая тень, кремовый фон */
+    /* Полотно с бегущей волной */
     ctx.shadowColor = "rgba(24, 42, 68, 0.22)";
     ctx.shadowBlur = 7 * s;
     ctx.shadowOffsetX = 2 * s;
     ctx.shadowOffsetY = 4 * s;
 
+    var segs = 16;
     ctx.beginPath();
-    ctx.moveTo(nearEdge, by0);
-    ctx.quadraticCurveTo((nearEdge + farX) / 2, by0 - wave * 0.5, farX, by0 + wave);
-    ctx.lineTo(farX + dir * 11 * s, by0 + bh / 2 + wave);
-    ctx.lineTo(farX, by0 + bh + wave);
-    ctx.quadraticCurveTo((nearEdge + farX) / 2, by0 + bh + wave * 0.5, nearEdge, by0 + bh);
+
+    for (var k = 0; k <= segs; k++) {
+      var u = k / segs;
+      var x = nearEdge - dir * u * bw;
+      var y = by0 + edgeWave(u, 0) + sag * u;
+      if (k === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+
+    var farTop = by0 + edgeWave(1, 0) + sag;
+    var farBottom = by0 + bh + edgeWave(1, 0.35) + sag;
+    var notchX = farX + dir * 11 * s;
+    var notchY = (farTop + farBottom) / 2 +
+      (reducedMotion ? 0 : Math.sin(t * 4 + p.phase) * 1.4 * s);
+
+    ctx.lineTo(notchX, notchY);
+
+    for (var k2 = segs; k2 >= 0; k2--) {
+      var u2 = k2 / segs;
+      var x2 = nearEdge - dir * u2 * bw;
+      var y2 = by0 + bh + edgeWave(u2, 0.35) + sag * u2;
+      ctx.lineTo(x2, y2);
+    }
+
     ctx.closePath();
     ctx.fillStyle = "#fff8e8";
     ctx.fill();
@@ -1864,27 +1889,14 @@
     ctx.lineWidth = Math.max(1.5, 2.2 * s);
     ctx.stroke();
 
-    /* Внутренняя золотая рамка */
-    var inset = 3.2 * s;
-    var innerNear = nearEdge - dir * inset;
-    var innerFar = farX + dir * inset;
-
-    ctx.beginPath();
-    ctx.moveTo(innerNear, by0 + inset);
-    ctx.lineTo(innerFar, by0 + inset + wave);
-    ctx.lineTo(innerFar, by0 + bh - inset + wave);
-    ctx.lineTo(innerNear, by0 + bh - inset);
-    ctx.closePath();
-    ctx.strokeStyle = "rgba(240, 195, 106, 0.9)";
-    ctx.lineWidth = Math.max(1, 1.2 * s);
-    ctx.stroke();
-
     /* Надпись */
+    var midWave = (edgeWave(0.5, 0) + edgeWave(0.5, 0.35)) / 2;
+
     ctx.fillStyle = "#8a2f1f";
     ctx.font = "800 " + p.fontSize + "px system-ui, -apple-system, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(PLANE_TEXT, bx0 + bw / 2, by0 + bh / 2 + 1);
+    ctx.fillText(PLANE_TEXT, nearEdge - dir * bw * 0.5, by0 + bh / 2 + midWave * 0.5 + 1);
 
     /* Самолётик */
     ctx.translate(p.x, py);
