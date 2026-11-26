@@ -42,6 +42,9 @@
   var butterflies = [];
   var firLights = [];
   var snowflakes = [];
+  var plane = null;
+  var planeTimer = 9 + Math.random() * 9;
+  var PLANE_TEXT = "1 «Л» молодцы";
   var G = {};
 
   var imageCache = {};
@@ -1453,6 +1456,30 @@
       var gone = c.dir === 1 ? c.x > W + 40 : c.x + c.w < -40;
       if (gone) cars.splice(i, 1);
     }
+
+    /* Самолётик с баннером — иногда */
+    if (plane) {
+      plane.x += plane.dir * plane.speed * dt;
+
+      var margin = plane.bannerW + 90;
+      var flownAway = plane.dir === 1 ? plane.x > W + margin : plane.x < -margin;
+
+      if (flownAway) {
+        plane = null;
+        planeTimer = 45 + Math.random() * 45;
+      }
+    } else {
+      planeTimer -= dt;
+
+      if (planeTimer <= 0) {
+        if (!reducedMotion && night < 0.55) {
+          spawnPlane();
+          planeTimer = 45 + Math.random() * 45;
+        } else {
+          planeTimer = 8;
+        }
+      }
+    }
   }
 
   /* ============================================================
@@ -1717,6 +1744,7 @@
     ctx.restore();
 
     drawBirds(t);
+    drawPlane(t);
   }
 
   function drawBirds(t) {
@@ -1742,6 +1770,137 @@
       ctx.quadraticCurveTo(x + 4 * b.s, b.y - 4 * b.s - lift, x + 10 * b.s, b.y - lift * 0.25);
       ctx.stroke();
     }
+
+    ctx.restore();
+  }
+
+  function spawnPlane() {
+    var dir = Math.random() < 0.5 ? 1 : -1;
+    var s = Math.max(0.7, Math.min(1.4, Math.min(W, H) / 900));
+    var fontSize = Math.max(11, Math.round(Math.min(W, H) * 0.019));
+
+    ctx.font = "700 " + fontSize + "px system-ui, -apple-system, sans-serif";
+    var tw = ctx.measureText(PLANE_TEXT).width;
+
+    var bannerW = tw + fontSize * 2.2;
+    var bannerH = fontSize * 1.75;
+
+    plane = {
+      dir: dir,
+      x: dir === 1 ? -bannerW - 80 : W + bannerW + 80,
+      y: H * (0.11 + Math.random() * 0.11),
+      speed: 55 + Math.random() * 30,
+      phase: Math.random() * Math.PI * 2,
+      s: s,
+      fontSize: fontSize,
+      bannerW: bannerW,
+      bannerH: bannerH
+    };
+  }
+
+  function drawPlane(t) {
+    if (!plane) return;
+
+    var p = plane;
+    var s = p.s;
+    var alpha = 1 - night * 0.55;
+    if (alpha < 0.15) return;
+
+    var bob = reducedMotion ? 0 : Math.sin(t * 1.6 + p.phase) * 2.5 * s;
+    var py = p.y + bob;
+    var dir = p.dir;
+    var bw = p.bannerW;
+    var bh = p.bannerH;
+
+    var gap = 20 * s;
+    var tailX = p.x - dir * 17 * s;
+    var nearX = p.x - dir * (18 * s + gap);
+    var bannerY = py + 7 * s;
+    var bx0 = dir === 1 ? nearX - bw : nearX;
+    var by0 = bannerY - bh / 2;
+    var farX = dir === 1 ? bx0 : bx0 + bw;
+    var nearEdge = dir === 1 ? bx0 + bw : bx0;
+    var wave = reducedMotion ? 0 : Math.sin(t * 3 + p.phase) * 2 * s;
+
+    var prop = reducedMotion ? 0.5 : Math.abs(Math.sin(t * 28 + p.phase));
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    /* Трос */
+    ctx.strokeStyle = "rgba(90, 105, 125, 0.8)";
+    ctx.lineWidth = Math.max(1, 1.2 * s);
+    ctx.beginPath();
+    ctx.moveTo(tailX, py);
+    ctx.quadraticCurveTo((tailX + nearX) / 2, bannerY - 4 * s, nearX, bannerY);
+    ctx.stroke();
+
+    /* Полотно с лёгкой волной */
+    ctx.beginPath();
+    ctx.moveTo(nearEdge, by0);
+    ctx.lineTo(farX, by0 + wave);
+    ctx.lineTo(farX + dir * 8 * s, by0 + bh / 2 + wave);
+    ctx.lineTo(farX, by0 + bh + wave);
+    ctx.lineTo(nearEdge, by0 + bh);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(255, 250, 235, 0.97)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(210, 120, 70, 0.85)";
+    ctx.lineWidth = Math.max(1, 1.4 * s);
+    ctx.stroke();
+
+    /* Надпись */
+    ctx.fillStyle = "#7a3b1f";
+    ctx.font = "700 " + p.fontSize + "px system-ui, -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(PLANE_TEXT, bx0 + bw / 2, by0 + bh / 2 + 1);
+
+    /* Самолётик */
+    ctx.translate(p.x, py);
+    ctx.scale(dir, 1);
+
+    /* Пропеллер */
+    ctx.strokeStyle = "#5b6675";
+    ctx.lineWidth = Math.max(1, 1.4 * s);
+    ctx.beginPath();
+    ctx.moveTo(20 * s, -7 * s - prop * 5 * s);
+    ctx.lineTo(20 * s, 7 * s + prop * 5 * s);
+    ctx.stroke();
+
+    /* Фюзеляж */
+    ctx.fillStyle = "#eaf1f8";
+    ctx.strokeStyle = "#5b6675";
+    ctx.lineWidth = Math.max(1, 1.2 * s);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 18 * s, 5.5 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    /* Крыло */
+    ctx.fillStyle = "#cfdae7";
+    ctx.beginPath();
+    ctx.moveTo(-2 * s, 0);
+    ctx.lineTo(7 * s, 0);
+    ctx.lineTo(2 * s, 9 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    /* Хвост */
+    ctx.beginPath();
+    ctx.moveTo(-16 * s, 0);
+    ctx.lineTo(-11 * s, 0);
+    ctx.lineTo(-14 * s, -8 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    /* Кабина */
+    ctx.fillStyle = "#7fb8e6";
+    ctx.beginPath();
+    ctx.ellipse(8 * s, -2 * s, 3.5 * s, 2.2 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
 
     ctx.restore();
   }
@@ -2596,6 +2755,7 @@
     get cars() { return cars; },
     get lanes() { return lanes; },
     get library() { return library; },
+    get plane() { return plane; },
     get local() { return localLibrary; },
     get pending() { return pendingQueue; },
     get uploadState() {
