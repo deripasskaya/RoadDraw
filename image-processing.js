@@ -368,6 +368,53 @@
     }
   }
 
+  /* У полупрозрачной кромки забираем цвет у плотных соседних пикселей.
+     Иначе сглаженный край остаётся белым от бумаги и даёт ореол. */
+  function decontaminateEdgeColors(px, w, h) {
+    var total = w * h;
+    var src = new Uint8ClampedArray(px);
+    var radius = 3;
+
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        var i = y * w + x;
+        var a = src[i * 4 + 3];
+
+        if (a === 0 || a >= 250) continue;
+
+        var sumR = 0;
+        var sumG = 0;
+        var sumB = 0;
+        var sumW = 0;
+
+        for (var dy = -radius; dy <= radius; dy++) {
+          var ny = y + dy;
+          if (ny < 0 || ny >= h) continue;
+
+          for (var dx = -radius; dx <= radius; dx++) {
+            var nx = x + dx;
+            if (nx < 0 || nx >= w) continue;
+
+            var ni = ny * w + nx;
+            var na = src[ni * 4 + 3];
+            if (na < 64) continue;
+
+            sumR += src[ni * 4] * na;
+            sumG += src[ni * 4 + 1] * na;
+            sumB += src[ni * 4 + 2] * na;
+            sumW += na;
+          }
+        }
+
+        if (sumW > 0) {
+          px[i * 4] = sumR / sumW;
+          px[i * 4 + 1] = sumG / sumW;
+          px[i * 4 + 2] = sumB / sumW;
+        }
+      }
+    }
+  }
+
   /* Маска штрихов: Собель по нормализованной яркости + локальный контраст.
      Тень на бумаге плавная, а карандаш даёт резкий перепад и тёмную сторону. */
   function buildStrokeMask(px, w, h) {
@@ -658,6 +705,86 @@
     }
   }
 
+  /* Убираем мелкие светлые островки, оставшиеся после заливки:
+     пылинки и точки на бумаге площадью меньше 150 px. */
+  function removeSmallLightIslands(px, w, h) {
+    var total = w * h;
+    var seen = new Uint8Array(total);
+    var stack = new Int32Array(total);
+    var comp = [];
+    var removed = 0;
+
+    for (var start = 0; start < total; start++) {
+      if (seen[start] || px[start * 4 + 3] < 16) continue;
+
+      var sp = 0;
+      stack[sp++] = start;
+      seen[start] = 1;
+      comp.length = 0;
+
+      var area = 0;
+      var light = 0;
+
+      while (sp > 0) {
+        var idx = stack[--sp];
+        var x = idx % w;
+        var y = (idx / w) | 0;
+
+        comp.push(idx);
+        area++;
+
+        var o = idx * 4;
+        var r = px[o];
+        var g = px[o + 1];
+        var b = px[o + 2];
+        var lum = luma(r, g, b);
+        var sat = Math.max(r, g, b) - Math.min(r, g, b);
+
+        if (lum >= 125 && sat <= 70) light++;
+
+        if (x > 0) {
+          var ni = idx - 1;
+          if (!seen[ni] && px[ni * 4 + 3] >= 16) {
+            seen[ni] = 1;
+            stack[sp++] = ni;
+          }
+        }
+        if (x < w - 1) {
+          var ni2 = idx + 1;
+          if (!seen[ni2] && px[ni2 * 4 + 3] >= 16) {
+            seen[ni2] = 1;
+            stack[sp++] = ni2;
+          }
+        }
+        if (y > 0) {
+          var ni3 = idx - w;
+          if (!seen[ni3] && px[ni3 * 4 + 3] >= 16) {
+            seen[ni3] = 1;
+            stack[sp++] = ni3;
+          }
+        }
+        if (y < h - 1) {
+          var ni4 = idx + w;
+          if (!seen[ni4] && px[ni4 * 4 + 3] >= 16) {
+            seen[ni4] = 1;
+            stack[sp++] = ni4;
+          }
+        }
+      }
+
+      var lightRatio = area ? light / area : 0;
+
+      if (area < 150 && lightRatio >= 0.5) {
+        for (var k = 0; k < comp.length; k++) {
+          px[comp[k] * 4 + 3] = 0;
+        }
+        removed += area;
+      }
+    }
+
+    return removed;
+  }
+
   /* Удаляем светлый малонасыщенный фон, связанный с краями.
      Штрихи (protect) и их расширенная маска (guard) не дают
      заливке протечь внутрь кузова через тонкие линии. */
@@ -742,34 +869,93 @@
       if (outside[i]) removed++;
     }
 
-    /* Съедаем светлую кайму вокруг штрихов, сами штрихи не трогаем */
-    for (var pass = 0; pass < radius + 1; pass++) {
-      var add = [];
+    /* Второй проход по кромке: снимаем бумажную кайму и открытые
+       просветы, не пуская заливку сквозь сами штрихи. */
+    var stack2 = new Int32Array(total);
+    var sp2 = 0;
 
-      for (var y2 = 0; y2 < h; y2++) {
-        for (var x2 = 0; x2 < w; x2++) {
-          var i2 = y2 * w + x2;
-          if (outside[i2] || !bgLike[i2] || protect[i2]) continue;
+    function push2(idx) {
+      if (outside[idx] || !bgLike[idx] || protect[idx]) return;
+      outside[idx] = 1;
+      stack2[sp2++] = idx;
+    }
 
-          var near =
-            (x2 > 0 && outside[i2 - 1]) ||
-            (x2 < w - 1 && outside[i2 + 1]) ||
-            (y2 > 0 && outside[i2 - w]) ||
-            (y2 < h - 1 && outside[i2 + w]);
+    for (var y3 = 0; y3 < h; y3++) {
+      for (var x3 = 0; x3 < w; x3++) {
+        var i3 = y3 * w + x3;
+        if (outside[i3] || !bgLike[i3] || protect[i3]) continue;
 
-          if (near) add.push(i2);
+        var near2 =
+          (x3 > 0 && outside[i3 - 1]) ||
+          (x3 < w - 1 && outside[i3 + 1]) ||
+          (y3 > 0 && outside[i3 - w]) ||
+          (y3 < h - 1 && outside[i3 + w]);
+
+        if (near2) {
+          outside[i3] = 1;
+          stack2[sp2++] = i3;
         }
       }
+    }
 
-      for (i = 0; i < add.length; i++) outside[add[i]] = 1;
-      removed += add.length;
+    while (sp2 > 0) {
+      var idx3 = stack2[--sp2];
+      var ix3 = idx3 % w;
+      var iy3 = (idx3 / w) | 0;
+
+      if (ix3 > 0) push2(idx3 - 1);
+      if (ix3 < w - 1) push2(idx3 + 1);
+      if (iy3 > 0) push2(idx3 - w);
+      if (iy3 < h - 1) push2(idx3 + w);
+    }
+
+    removed = 0;
+    for (i = 0; i < total; i++) {
+      if (outside[i]) removed++;
     }
 
     for (i = 0; i < total; i++) {
       px[i * 4 + 3] = (outside[i] || wasClear[i]) ? 0 : 255;
     }
 
-    featherAlpha(px, w, h, Math.max(1, Math.round(Math.min(w, h) / 400)));
+    removed += removeSmallLightIslands(px, w, h);
+
+    /* Сужаем маску: убираем оставшуюся бумажную кайму и смягчаем край. */
+    var erodeR = Math.max(1, Math.min(2, Math.round(Math.min(w, h) / 400)));
+    var solid = new Uint8Array(total);
+
+    for (i = 0; i < total; i++) {
+      solid[i] = px[i * 4 + 3] >= 16 ? 1 : 0;
+    }
+
+    var eroded = morphErode(solid, w, h, erodeR);
+
+    for (i = 0; i < total; i++) {
+      if (eroded[i]) {
+        px[i * 4 + 3] = 255;
+        continue;
+      }
+
+      if (solid[i]) {
+        var ei = i * 4;
+        var er = px[ei];
+        var eg = px[ei + 1];
+        var eb = px[ei + 2];
+        var elum = luma(er, eg, eb);
+        var esat = Math.max(er, eg, eb) - Math.min(er, eg, eb);
+
+        /* Карандашные и цветные штрихи не сужаем — только бумажную кайму. */
+        if (elum < 215 || esat > 40) {
+          px[i * 4 + 3] = 255;
+          continue;
+        }
+      }
+
+      px[i * 4 + 3] = 0;
+    }
+
+    featherAlpha(px, w, h, 1);
+    decontaminateEdgeColors(px, w, h);
 
     for (i = 0; i < total; i++) {
       if (wasClear[i]) px[i * 4 + 3] = 0;
@@ -803,6 +989,42 @@
         var v2 = 0;
         for (var k2 = from2; k2 <= to2; k2++) {
           if (tmp[k2 * w + x2]) { v2 = 1; break; }
+        }
+        out[y2 * w + x2] = v2;
+      }
+    }
+
+    return out;
+  }
+
+  /* Сужаем непрозрачную маску на r пикселей: пиксель остаётся, только
+     если все соседи в радиусе тоже непрозрачны. */
+  function morphErode(src, w, h, r) {
+    if (r < 1) return src;
+
+    var tmp = new Uint8Array(w * h);
+    var out = new Uint8Array(w * h);
+
+    for (var y = 0; y < h; y++) {
+      var row = y * w;
+      for (var x = 0; x < w; x++) {
+        var from = Math.max(0, x - r);
+        var to = Math.min(w - 1, x + r);
+        var v = 1;
+        for (var k = from; k <= to; k++) {
+          if (!src[row + k]) { v = 0; break; }
+        }
+        tmp[row + x] = v;
+      }
+    }
+
+    for (var x2 = 0; x2 < w; x2++) {
+      for (var y2 = 0; y2 < h; y2++) {
+        var from2 = Math.max(0, y2 - r);
+        var to2 = Math.min(h - 1, y2 + r);
+        var v2 = 1;
+        for (var k2 = from2; k2 <= to2; k2++) {
+          if (!tmp[k2 * w + x2]) { v2 = 0; break; }
         }
         out[y2 * w + x2] = v2;
       }
@@ -1240,6 +1462,7 @@
        незакрашенные места остались бы прозрачными. */
     var outData = octx.getImageData(0, 0, ow, oh);
     fillInteriorHoles(outData.data, ow, oh);
+    decontaminateEdgeColors(outData.data, ow, oh);
     octx.putImageData(outData, 0, 0);
 
     var transparent = 0;
