@@ -1777,7 +1777,7 @@
   function spawnPlane() {
     var dir = Math.random() < 0.5 ? 1 : -1;
     var minSide = Math.min(W, H);
-    var s = Math.max(1.0, Math.min(2.0, minSide / 620));
+    var s = Math.max(1.4, Math.min(2.6, minSide / 430));
     var fontSize = Math.max(18, Math.min(34, Math.round(minSide * 0.03)));
 
     ctx.font = "800 " + fontSize + "px system-ui, -apple-system, sans-serif";
@@ -1814,9 +1814,9 @@
     var bh = p.bannerH;
 
     var gap = 24 * s;
-    var tailX = p.x - dir * 18 * s;
-    var nearX = p.x - dir * (22 * s + gap);
-    var bannerY = py + 5 * s;
+    var tailX = p.x - dir * 24 * s;
+    var nearX = p.x - dir * (30 * s + gap);
+    var bannerY = py + 6 * s;
     var by0 = bannerY - bh / 2;
     var nearEdge = nearX;
     var farX = nearEdge - dir * bw;
@@ -1902,51 +1902,95 @@
     ctx.translate(p.x, py);
     ctx.scale(dir, 1);
 
-    /* Пропеллер */
-    ctx.strokeStyle = "#4b5a6b";
-    ctx.lineWidth = Math.max(1.2, 1.8 * s);
+    /* Пропеллер: полупрозрачный диск и лопасть */
+    ctx.fillStyle = "rgba(120, 140, 165, 0.14)";
+    ctx.beginPath();
+    ctx.ellipse(29 * s, 0, 2.4 * s, 11 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "#4a5869";
+    ctx.lineWidth = Math.max(1.4, 1.8 * s);
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(23 * s, -10 * s - prop * 5 * s);
-    ctx.lineTo(23 * s, 10 * s + prop * 5 * s);
+    ctx.moveTo(29 * s, -11 * s * prop);
+    ctx.lineTo(29 * s, 11 * s * prop);
     ctx.stroke();
 
     /* Мягкая тень корпуса */
     ctx.shadowColor = "rgba(24, 42, 68, 0.2)";
-    ctx.shadowBlur = 6 * s;
-    ctx.shadowOffsetX = 2 * s;
-    ctx.shadowOffsetY = 4 * s;
+    ctx.shadowBlur = 7 * s;
+    ctx.shadowOffsetX = 3 * s;
+    ctx.shadowOffsetY = 5 * s;
 
-    /* Фюзеляж */
-    ctx.fillStyle = "#f7fbff";
-    ctx.strokeStyle = "#4b5a6b";
+    /* Хвостовой стабилизатор */
+    ctx.fillStyle = "#dfeaf5";
+    ctx.strokeStyle = "#3f4d5e";
     ctx.lineWidth = Math.max(1.2, 1.6 * s);
     ctx.beginPath();
-    ctx.moveTo(-18 * s, -5 * s);
-    ctx.quadraticCurveTo(-21 * s, 0, -18 * s, 5 * s);
-    ctx.lineTo(10 * s, 5 * s);
-    ctx.quadraticCurveTo(18 * s, 4 * s, 21 * s, 0);
-    ctx.quadraticCurveTo(18 * s, -4 * s, 10 * s, -5 * s);
+    ctx.moveTo(-26 * s, 1 * s);
+    ctx.lineTo(-13 * s, 3 * s);
+    ctx.lineTo(-24 * s, 8 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    /* Фюзеляж */
+    ctx.fillStyle = "#fbfdff";
+    ctx.beginPath();
+    ctx.moveTo(-26 * s, 0);
+    ctx.quadraticCurveTo(-24 * s, -7 * s, -12 * s, -8 * s);
+    ctx.lineTo(12 * s, -8 * s);
+    ctx.quadraticCurveTo(23 * s, -7 * s, 27 * s, -1 * s);
+    ctx.quadraticCurveTo(23 * s, 6 * s, 12 * s, 7 * s);
+    ctx.lineTo(-14 * s, 7 * s);
+    ctx.quadraticCurveTo(-24 * s, 6 * s, -26 * s, 0);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
     /* Крыло */
-    ctx.fillStyle = "#dfeaf5";
+    ctx.fillStyle = "#e6eef8";
     ctx.beginPath();
-    ctx.moveTo(-4 * s, 2 * s);
-    ctx.quadraticCurveTo(5 * s, 2 * s, 8 * s, 12 * s);
-    ctx.quadraticCurveTo(-2 * s, 12 * s, -8 * s, 5 * s);
+    ctx.moveTo(-7 * s, 2 * s);
+    ctx.quadraticCurveTo(6 * s, 3 * s, 11 * s, 15 * s);
+    ctx.quadraticCurveTo(0, 17 * s, -11 * s, 8 * s);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    /* Хвост */
-    ctx.fillStyle = "#5b8fd6";
+    /* Красный кончик крыла */
+    ctx.fillStyle = "#e2574a";
     ctx.beginPath();
-    ctx.moveTo(-17 * s, -2 * s);
-    ctx.lineTo(-10 * s, -2 * s);
-    ctx.lineTo(-14 * s, -13 * s);
+    ctx.ellipse(6 * s, 13 * s, 4.5 * s, 2.2 * s, 0.35, 0, Math.PI * 2);
+    ctx.fill();
+
+    /* Хвостовой киль */
+    ctx.fillStyle = "#4f86cf";
+    ctx.beginPath();
+    ctx.moveTo(-27 * s, -2 * s);
+    ctx.lineTo(-17 * s, -3 * s);
+    ctx.lineTo(-21 * s, -18 * s);
+    ctx.quadraticCurveTo(-25 * s, -17 * s, -27 * s, -2 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    /* Красный кончик киля */
+    ctx.fillStyle = "#e2574a";
+    ctx.beginPath();
+    ctx.moveTo(-21 * s, -18 * s);
+    ctx.lineTo(-24 * s, -17 * s);
+    ctx.lineTo(-23 * s, -13 * s);
+    ctx.closePath();
+    ctx.fill();
+
+    /* Красный нос */
+    ctx.fillStyle = "#e2574a";
+    ctx.beginPath();
+    ctx.moveTo(16 * s, -7.5 * s);
+    ctx.quadraticCurveTo(26 * s, -6 * s, 28 * s, -0.5 * s);
+    ctx.quadraticCurveTo(26 * s, 5.5 * s, 16 * s, 7 * s);
+    ctx.quadraticCurveTo(19 * s, 0, 16 * s, -7.5 * s);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
@@ -1956,28 +2000,53 @@
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
 
-    /* Красная полоса на борту */
-    ctx.strokeStyle = "#e05a47";
-    ctx.lineWidth = Math.max(1.2, 2.4 * s);
+    /* Красная полоса по борту */
+    ctx.strokeStyle = "#e2574a";
+    ctx.lineWidth = Math.max(1.4, 2.4 * s);
+    ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(-15 * s, 1.5 * s);
-    ctx.lineTo(13 * s, 1.5 * s);
+    ctx.moveTo(-18 * s, 2.6 * s);
+    ctx.quadraticCurveTo(0, 4.6 * s, 17 * s, 3.2 * s);
+    ctx.stroke();
+
+    /* Блик по верху фюзеляжа */
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+    ctx.lineWidth = Math.max(1, 1.2 * s);
+    ctx.beginPath();
+    ctx.moveTo(-20 * s, -6 * s);
+    ctx.quadraticCurveTo(-4 * s, -8.5 * s, 14 * s, -6 * s);
     ctx.stroke();
 
     /* Кабина */
     ctx.fillStyle = "#8ec9f0";
-    ctx.strokeStyle = "#4b5a6b";
-    ctx.lineWidth = Math.max(1, 1.2 * s);
+    ctx.strokeStyle = "#3f4d5e";
+    ctx.lineWidth = Math.max(1.1, 1.3 * s);
     ctx.beginPath();
-    ctx.ellipse(10 * s, -1.6 * s, 4.6 * s, 3 * s, 0, 0, Math.PI * 2);
+    ctx.moveTo(4 * s, -7.5 * s);
+    ctx.quadraticCurveTo(6 * s, -16 * s, 17 * s, -8 * s);
+    ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
+    ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+    ctx.beginPath();
+    ctx.ellipse(11 * s, -11 * s, 3.2 * s, 1.6 * s, -0.25, 0, Math.PI * 2);
+    ctx.fill();
+
+    /* Иллюминатор */
+    ctx.fillStyle = "#6fb6e8";
+    ctx.beginPath();
+    ctx.arc(-8 * s, -1 * s, 2 * s, 0, Math.PI * 2);
+    ctx.fill();
+
     /* Кок */
     ctx.fillStyle = "#f3b23c";
+    ctx.strokeStyle = "#3f4d5e";
+    ctx.lineWidth = Math.max(1, 1.1 * s);
     ctx.beginPath();
-    ctx.arc(21 * s, 0, 2.6 * s, 0, Math.PI * 2);
+    ctx.arc(28 * s, 0, 3 * s, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
 
     ctx.restore();
   }
