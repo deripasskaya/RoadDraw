@@ -2028,6 +2028,18 @@
     ctx.fill();
     ctx.stroke();
 
+    /* Красная полоса по борту — проходит под крылом */
+    ctx.strokeStyle = "#e2574a";
+    ctx.lineWidth = Math.max(1.4, 2.4 * s);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-18 * s, 2.6 * s);
+    ctx.quadraticCurveTo(0, 4.6 * s, 17 * s, 3.2 * s);
+    ctx.stroke();
+
+    ctx.strokeStyle = "#3f4d5e";
+    ctx.lineWidth = Math.max(1.2, 1.6 * s);
+
     /* Крыло со стреловидностью назад */
     ctx.fillStyle = "#e6eef8";
     ctx.beginPath();
@@ -2081,15 +2093,6 @@
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
 
-    /* Красная полоса по борту */
-    ctx.strokeStyle = "#e2574a";
-    ctx.lineWidth = Math.max(1.4, 2.4 * s);
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(-18 * s, 2.6 * s);
-    ctx.quadraticCurveTo(0, 4.6 * s, 17 * s, 3.2 * s);
-    ctx.stroke();
-
     /* Блик по верху фюзеляжа */
     ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
     ctx.lineWidth = Math.max(1, 1.2 * s);
@@ -2114,11 +2117,14 @@
     ctx.ellipse(11 * s, -11 * s, 3.2 * s, 1.6 * s, -0.25, 0, Math.PI * 2);
     ctx.fill();
 
-    /* Иллюминатор */
+    /* Иллюминаторы */
     ctx.fillStyle = "#6fb6e8";
-    ctx.beginPath();
-    ctx.arc(-8 * s, -1 * s, 2 * s, 0, Math.PI * 2);
-    ctx.fill();
+    var windows = [-15, -8, -1];
+    for (var wi = 0; wi < windows.length; wi++) {
+      ctx.beginPath();
+      ctx.arc(windows[wi] * s, -1.4 * s, 2 * s, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     /* Кок */
     ctx.fillStyle = "#f3b23c";
