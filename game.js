@@ -110,7 +110,30 @@
         c.w = W * 0.5;
         c.h = c.w / c.aspect;
       }
+      makeCarSprite(c);
     }
+  }
+
+  /* Один раз готовим уменьшенную копию машины под размер экрана.
+     Так canvas не пересчитывает картинку каждый кадр — меньше мерцания. */
+  function makeCarSprite(c) {
+    if (!c.img || !c.w || !c.h) return;
+
+    var sw = Math.max(2, Math.round(c.w * dpr / 2) * 2);
+    var sh = Math.max(2, Math.round(c.h * dpr));
+
+    var canvas = document.createElement("canvas");
+    canvas.width = sw;
+    canvas.height = sh;
+
+    var sctx = canvas.getContext("2d");
+    sctx.imageSmoothingEnabled = true;
+    sctx.imageSmoothingQuality = "high";
+    sctx.drawImage(c.img, 0, 0, sw, sh);
+
+    c.sprite = canvas;
+    c.spriteW = sw / dpr;
+    c.spriteH = sh / dpr;
   }
 
   function resize() {
@@ -317,6 +340,7 @@
     };
 
     car.v = car.vmax * 0.55;
+    makeCarSprite(car);
     cars.push(car);
 
     return true;
@@ -1315,10 +1339,10 @@
     var n = night;
     if (n <= 0.02) return;
 
-    var baseline = c.box.y + c.h;
-    var frontX = c.dir === 1 ? c.x + c.w - 2 : c.x + 2;
-    var hy = baseline - c.h * 0.38;
-    var r = Math.max(8, c.h * 0.16);
+    var baseline = c.box.y + c.box.h;
+    var frontX = c.dir === 1 ? c.box.x + c.box.w - 2 : c.box.x + 2;
+    var hy = baseline - c.box.h * 0.38;
+    var r = Math.max(8, c.box.h * 0.16);
 
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
@@ -1414,21 +1438,28 @@
     ctx.restore();
   }
 
+  function snapDevice(value) {
+    return Math.round(value * dpr) / dpr;
+  }
+
   function drawCar(c, t) {
-    var bob = reducedMotion ? 0 : Math.sin(t * 5.5 + c.phase) * c.h * 0.012;
+    var bob = reducedMotion ? 0 : Math.sin(t * 5.5 + c.phase) * c.h * 0.008;
     var jump = 0;
 
     if (c.bounce > 0) {
       jump = -Math.sin((1 - c.bounce / 0.55) * Math.PI) * c.h * 0.16;
     }
 
-    var baseline = c.lane.y + bob + jump;
+    var baseline = snapDevice(c.lane.y + bob + jump);
+    var centerX = snapDevice(c.x + c.w / 2);
+    var dw = c.spriteW || c.w;
+    var dh = c.spriteH || c.h;
 
     c.box = {
-      x: c.x,
-      y: baseline - c.h,
-      w: c.w,
-      h: c.h
+      x: centerX - dw / 2,
+      y: baseline - dh,
+      w: dw,
+      h: dh
     };
 
     /* Тень на асфальте */
@@ -1436,17 +1467,14 @@
     ctx.globalAlpha = 0.2;
     ctx.fillStyle = "#000";
     ctx.beginPath();
-    ctx.ellipse(c.x + c.w / 2, c.lane.y + 3, c.w * 0.45, Math.max(3, c.h * 0.06), 0, 0, Math.PI * 2);
+    ctx.ellipse(centerX, c.lane.y + 3, dw * 0.45, Math.max(3, dh * 0.06), 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
     ctx.save();
-    if (night > 0.02) {
-      ctx.filter = "brightness(" + (1 - night * 0.18).toFixed(3) + ")";
-    }
-    ctx.translate(c.x + c.w / 2, baseline);
+    ctx.translate(centerX, baseline);
     if (c.flip) ctx.scale(-1, 1);
-    ctx.drawImage(c.img, -c.w / 2, -c.h, c.w, c.h);
+    ctx.drawImage(c.sprite || c.img, -dw / 2, -dh, dw, dh);
     ctx.restore();
 
     if (c.bubble > 0) drawBubble(c, baseline);
@@ -1467,12 +1495,14 @@
     var life = 0.9;
     var p = 1 - c.bubble / life;
     var alpha = Math.min(1, c.bubble * 4);
-    var cy = baseline - c.h - 14 - p * 18;
+    var cx = c.box.x + c.box.w / 2;
+    var bubbleCarH = c.box.h;
+    var cy = baseline - bubbleCarH - 14 - p * 18;
 
     ctx.save();
     ctx.globalAlpha = alpha;
 
-    var fontSize = Math.max(12, Math.round(c.h * 0.17));
+    var fontSize = Math.max(12, Math.round(bubbleCarH * 0.17));
     ctx.font = "700 " + fontSize + "px system-ui, -apple-system, sans-serif";
 
     var text = "Бип!";
@@ -1480,7 +1510,7 @@
     var padX = Math.max(8, fontSize * 0.55);
     var bw = tw + padX * 2;
     var bh = fontSize * 1.9;
-    var bx = c.x + c.w / 2 - bw / 2;
+    var bx = cx - bw / 2;
     var by = cy - bh;
 
     ctx.fillStyle = "#fff";
@@ -1491,16 +1521,16 @@
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.moveTo(c.x + c.w / 2 - 6, by + bh - 1);
-    ctx.lineTo(c.x + c.w / 2, by + bh + 8);
-    ctx.lineTo(c.x + c.w / 2 + 6, by + bh - 1);
+    ctx.moveTo(cx - 6, by + bh - 1);
+    ctx.lineTo(cx, by + bh + 8);
+    ctx.lineTo(cx + 6, by + bh - 1);
     ctx.closePath();
     ctx.fill();
 
     ctx.fillStyle = "#1f2937";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(text, c.x + c.w / 2, by + bh / 2 + 1);
+    ctx.fillText(text, cx, by + bh / 2 + 1);
 
     ctx.restore();
   }
@@ -1521,6 +1551,9 @@
     /* Огоньки на ёлках — поверх затемнённых деревьев */
     drawFirLights(t);
 
+    /* Снег — позади машин, чтобы белые точки не мигали на кузовах */
+    drawSnowfall(t);
+
     for (var li = 0; li < lanes.length; li++) {
       var lane = lanes[li];
       for (var i = 0; i < cars.length; i++) {
@@ -1529,7 +1562,6 @@
     }
 
     drawAllHeadlights();
-    drawSnowfall(t);
   }
 
   /* ============================================================

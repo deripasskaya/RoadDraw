@@ -1642,6 +1642,7 @@
        незакрашенные места остались бы прозрачными. */
     var outData = octx.getImageData(0, 0, ow, oh);
     fillInteriorHoles(outData.data, ow, oh);
+    removeSmallLightIslands(outData.data, ow, oh);
     decontaminateEdgeColors(outData.data, ow, oh);
     octx.putImageData(outData, 0, 0);
 
