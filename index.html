@@ -4,15 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#bfe8fb">
-  <meta name="road-build" content="2026-11-26-2">
+  <meta name="road-build" content="2026-11-26-3">
   <title>Дорога — машинки едут</title>
-  <link rel="stylesheet" href="styles.css?v=20261126-2">
+  <link rel="stylesheet" href="styles.css?v=20261126-3">
 </head>
 <body>
   <canvas id="scene" aria-label="Дорога, по которой едут машинки"></canvas>
 
   <div class="hud">
-    <button id="addPhotos" class="add-photos" type="button" aria-label="Добавить фото машин" title="Добавить фото"><span aria-hidden="true">📷</span><span>Фото</span></button>
+    <button id="addPhotos" class="wide-btn" type="button" aria-label="Добавить фото машин" title="Добавить фото"><span aria-hidden="true">📷</span><span>Фото</span></button>
+    <button id="garageBtn" class="wide-btn" type="button" aria-label="Мои машины" title="Мои машины"><span aria-hidden="true">🚗</span><span>Мои</span></button>
     <label class="speed" title="Скорость потока">
       <span aria-hidden="true">🐢</span>
       <input id="speed" type="range" min="0.4" max="2" step="0.1" value="1" aria-label="Скорость потока">
@@ -30,9 +31,10 @@
   <aside id="photoPanel" class="photo-panel" aria-label="Только что добавленные машины" hidden>
     <div class="panel-row">
       <div class="panel-meta">
-        <span class="panel-label">Новые машины</span>
+        <span id="panelLabel" class="panel-label">Новые машины</span>
         <span id="uploadProgress" class="panel-progress" role="status" aria-live="polite"></span>
       </div>
+      <button id="panelClear" class="panel-clear" type="button" aria-label="Удалить все локальные машины" title="Удалить все локальные машины">🗑</button>
       <button id="panelDone" class="panel-done" type="button">Готово</button>
     </div>
     <div id="panelStrip" class="panel-strip"></div>
@@ -75,8 +77,8 @@
     </div>
   </div>
 
-  <script src="image-processing.js?v=20261126-2"></script>
-  <script src="car-store.js?v=20261126-2"></script>
-  <script src="game.js?v=20261126-2"></script>
+  <script src="image-processing.js?v=20261126-3"></script>
+  <script src="car-store.js?v=20261126-3"></script>
+  <script src="game.js?v=20261126-3"></script>
 </body>
 </html>

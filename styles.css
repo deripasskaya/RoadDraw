@@ -55,7 +55,7 @@ body {
   transition: transform 0.12s ease, background 0.12s ease;
 }
 
-.hud .add-photos {
+.hud .wide-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -211,6 +211,26 @@ body {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.panel-clear {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #fdecec;
+  color: #b91c1c;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.panel-clear:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .panel-done:active {

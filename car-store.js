@@ -113,6 +113,13 @@
     });
   }
 
+  function clearAll() {
+    return withStore("readwrite", function (store) {
+      store.clear();
+      return true;
+    });
+  }
+
   function makeId(seed) {
     return "local-" + Date.now().toString(36) + "-" +
       Math.random().toString(36).slice(2, 7) + "-" + seed;
@@ -349,6 +356,7 @@
     put: put,
     putMany: putMany,
     remove: remove,
+    clearAll: clearAll,
     migrateFromLocalStorage: migrateFromLocalStorage,
     isSupported: function () { return !unsupported; }
   };

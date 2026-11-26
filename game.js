@@ -13,9 +13,12 @@
   var speedInput = document.getElementById("speed");
 
   var addPhotosBtn = document.getElementById("addPhotos");
+  var garageBtn = document.getElementById("garageBtn");
   var fileInput = document.getElementById("fileInput");
   var photoPanel = document.getElementById("photoPanel");
   var panelStrip = document.getElementById("panelStrip");
+  var panelLabel = document.getElementById("panelLabel");
+  var panelClear = document.getElementById("panelClear");
   var uploadProgress = document.getElementById("uploadProgress");
   var panelDone = document.getElementById("panelDone");
   var panelJuice = document.getElementById("panelJuice");
@@ -386,12 +389,84 @@
     if (!photoPanel) return;
     photoPanel.hidden = false;
     document.body.classList.add("panel-open");
+    updatePanelControls();
   }
 
   function hidePanel() {
     if (!photoPanel) return;
     photoPanel.hidden = true;
     document.body.classList.remove("panel-open");
+  }
+
+  function updatePanelControls() {
+    if (!panelClear) return;
+    panelClear.disabled = uploadBusy || localEditBusy || !localLibrary.length;
+  }
+
+  function openGarage() {
+    if (uploadBusy || localEditBusy) {
+      toast("Дождитесь окончания обработки");
+      return;
+    }
+
+    if (!localLibrary.length) {
+      toast("Локальных машин пока нет");
+      return;
+    }
+
+    if (panelLabel) panelLabel.textContent = "Мои машины";
+    if (panelStrip) panelStrip.textContent = "";
+
+    for (var i = 0; i < localLibrary.length; i++) {
+      var item = localLibrary[i];
+      item.thumbEl = null;
+      item.thumbImg = null;
+      item.previewBtn = null;
+      item.rotateBtn = null;
+      item.cropBtn = null;
+      item.removeBtn = null;
+      addPanelItem(item);
+    }
+
+    showPanel();
+    setProgress("Локальных машин: " + localLibrary.length);
+  }
+
+  function clearAllLocal() {
+    if (uploadBusy || localEditBusy || juiceRunning) {
+      toast("Дождитесь окончания обработки");
+      return;
+    }
+
+    if (!localLibrary.length) {
+      toast("Локальных машин нет");
+      return;
+    }
+
+    if (!window.confirm("Удалить все локальные машины? Общие машины на дороге останутся.")) {
+      return;
+    }
+
+    localLibrary = [];
+    pendingQueue = [];
+
+    for (var i = cars.length - 1; i >= 0; i--) {
+      if (cars[i].local) cars.splice(i, 1);
+    }
+
+    combineLibrary();
+
+    if (panelStrip) panelStrip.textContent = "";
+    hidePanel();
+
+    if (window.RoadDB) {
+      window.RoadDB.clearAll().catch(function () {
+        toast("Не удалось очистить локальное хранилище");
+      });
+    }
+
+    toast("Локальные машины удалены");
+    if (!running) draw();
   }
 
   function setProgress(text) {
@@ -666,6 +741,7 @@
         localEditBusy = false;
         setItemBusy(item, false);
         if (panelJuice) panelJuice.disabled = uploadBusy;
+        updatePanelControls();
         setProgress("");
       });
   }
@@ -941,6 +1017,7 @@
       cropCancel.disabled = false;
       if (cropCancelX) cropCancelX.disabled = false;
       if (panelJuice) panelJuice.disabled = uploadBusy;
+      updatePanelControls();
     }
   }
 
@@ -1084,6 +1161,7 @@
 
     toast("Машина убрана с дороги");
     if (!running) draw();
+    updatePanelControls();
 
     if (!uploadBusy && panelStrip && !panelStrip.children.length) hidePanel();
   }
@@ -1167,6 +1245,7 @@
     uploadDone = 0;
     uploadErrors = 0;
 
+    if (panelLabel) panelLabel.textContent = "Новые машины";
     showPanel();
     updateJuiceLabel();
     if (panelJuice) panelJuice.disabled = true;
@@ -1227,6 +1306,7 @@
     } finally {
       uploadBusy = false;
       if (panelJuice) panelJuice.disabled = false;
+      updatePanelControls();
 
       if (uploadDone && uploadErrors) {
         toast("Машин: " + uploadDone + ", не удалось: " + uploadErrors);
@@ -2704,6 +2784,9 @@
     fileInput.click();
   });
 
+  garageBtn.addEventListener("click", openGarage);
+  panelClear.addEventListener("click", clearAllLocal);
+
   fileInput.addEventListener("change", function () {
     var files = fileInput.files;
     if (files && files.length) addFiles(files);
@@ -2920,6 +3003,8 @@
     rotate: rotateLocalItem,
     openCrop: openCropModal,
     applyCrop: applyCrop,
+    openGarage: openGarage,
+    clearAllLocal: clearAllLocal,
     get audioState() {
       return {
         context: audio ? audio.state : "none",
