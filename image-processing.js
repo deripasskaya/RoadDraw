@@ -368,12 +368,110 @@
     }
   }
 
+  /* Убираем светлые пиксели бумаги, прилипшие к внешнему краю рисунка. */
+  function trimLightEdgePixels(px, w, h, radius, lumMin, satMax) {
+    lumMin = lumMin || 205;
+    satMax = satMax || 40;
+    var total = w * h;
+    var srcAlpha = new Uint8Array(total);
+    var i;
+
+    for (i = 0; i < total; i++) srcAlpha[i] = px[i * 4 + 3];
+
+    var removed = 0;
+
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        i = y * w + x;
+        if (srcAlpha[i] < 128) continue;
+
+        var o = i * 4;
+        var r = px[o];
+        var g = px[o + 1];
+        var b = px[o + 2];
+        var lum = luma(r, g, b);
+        var sat = Math.max(r, g, b) - Math.min(r, g, b);
+
+        if (lum < lumMin || sat > satMax) continue;
+
+        var nearEdge = false;
+
+        for (var dy = -radius; dy <= radius && !nearEdge; dy++) {
+          var ny = y + dy;
+
+          for (var dx = -radius; dx <= radius; dx++) {
+            var nx = x + dx;
+
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+              nearEdge = true;
+              break;
+            }
+
+            if (srcAlpha[ny * w + nx] < 48) {
+              nearEdge = true;
+              break;
+            }
+          }
+        }
+
+        if (nearEdge) {
+          px[o + 3] = 0;
+          removed++;
+        }
+      }
+    }
+
+    return removed;
+  }
+
+  /* Мягко сглаживаем рваный край альфа-маски медианой 3×3. */
+  function medianAlpha(px, w, h) {
+    var total = w * h;
+    var src = new Uint8Array(total);
+    var vals = new Uint8Array(9);
+    var i;
+
+    for (i = 0; i < total; i++) src[i] = px[i * 4 + 3];
+
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        var n = 0;
+
+        for (var dy = -1; dy <= 1; dy++) {
+          var ny = y + dy;
+
+          for (var dx = -1; dx <= 1; dx++) {
+            var nx = x + dx;
+
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+              vals[n++] = 0;
+            } else {
+              vals[n++] = src[ny * w + nx];
+            }
+          }
+        }
+
+        for (var a = 0; a < 9; a++) {
+          for (var b = a + 1; b < 9; b++) {
+            if (vals[b] < vals[a]) {
+              var t = vals[a];
+              vals[a] = vals[b];
+              vals[b] = t;
+            }
+          }
+        }
+
+        px[(y * w + x) * 4 + 3] = vals[4];
+      }
+    }
+  }
+
   /* У полупрозрачной кромки забираем цвет у плотных соседних пикселей.
      Иначе сглаженный край остаётся белым от бумаги и даёт ореол. */
   function decontaminateEdgeColors(px, w, h) {
     var total = w * h;
     var src = new Uint8ClampedArray(px);
-    var radius = 3;
+    var radius = 4;
 
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
@@ -386,6 +484,10 @@
         var sumG = 0;
         var sumB = 0;
         var sumW = 0;
+        var inkR = 0;
+        var inkG = 0;
+        var inkB = 0;
+        var inkW = 0;
 
         for (var dy = -radius; dy <= radius; dy++) {
           var ny = y + dy;
@@ -403,10 +505,33 @@
             sumG += src[ni * 4 + 1] * na;
             sumB += src[ni * 4 + 2] * na;
             sumW += na;
+
+            var nr = src[ni * 4];
+            var ng = src[ni * 4 + 1];
+            var nb = src[ni * 4 + 2];
+            var nLum = luma(nr, ng, nb);
+            var nSat = Math.max(nr, ng, nb) - Math.min(nr, ng, nb);
+
+            if (nLum < 190 || nSat > 30) {
+              inkR = nr * na;
+              inkG = ng * na;
+              inkB = nb * na;
+              inkW = na;
+              // взять ближайший плотный штрих важнее всего
+              if (na > 180) break;
+            }
           }
+          if (inkW > 0 && inkW >= 180) break;
         }
 
-        if (sumW > 0) {
+        if (inkW > 0) {
+          px[i * 4] = inkR / inkW;
+          px[i * 4 + 1] = inkG / inkW;
+          px[i * 4 + 2] = inkB / inkW;
+        } else if (a < 250 && luma(px[i * 4], px[i * 4 + 1], px[i * 4 + 2]) >= 200) {
+          /* Светлая полупрозрачная кайма без штриха рядом — убираем. */
+          px[i * 4 + 3] = 0;
+        } else if (sumW > 0) {
           px[i * 4] = sumR / sumW;
           px[i * 4 + 1] = sumG / sumW;
           px[i * 4 + 2] = sumB / sumW;
@@ -1643,7 +1768,11 @@
     var outData = octx.getImageData(0, 0, ow, oh);
     fillInteriorHoles(outData.data, ow, oh);
     removeSmallLightIslands(outData.data, ow, oh);
+    medianAlpha(outData.data, ow, oh);
+    trimLightEdgePixels(outData.data, ow, oh, 2);
+    featherAlpha(outData.data, ow, oh, 1);
     decontaminateEdgeColors(outData.data, ow, oh);
+    trimLightEdgePixels(outData.data, ow, oh, 5, 195, 55);
     octx.putImageData(outData, 0, 0);
 
     var transparent = 0;

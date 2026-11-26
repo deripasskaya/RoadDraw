@@ -1551,9 +1551,6 @@
     /* Огоньки на ёлках — поверх затемнённых деревьев */
     drawFirLights(t);
 
-    /* Снег — позади машин, чтобы белые точки не мигали на кузовах */
-    drawSnowfall(t);
-
     for (var li = 0; li < lanes.length; li++) {
       var lane = lanes[li];
       for (var i = 0; i < cars.length; i++) {
@@ -1562,6 +1559,7 @@
     }
 
     drawAllHeadlights();
+    drawSnowfall(t);
   }
 
   /* ============================================================
