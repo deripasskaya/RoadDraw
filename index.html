@@ -11,6 +11,7 @@
   <canvas id="scene" aria-label="Дорога, по которой едут машинки"></canvas>
 
   <div class="hud">
+    <button id="addPhotos" type="button" aria-label="Добавить фото машин" title="Добавить фото">📷</button>
     <label class="speed" title="Скорость потока">
       <span aria-hidden="true">🐢</span>
       <input id="speed" type="range" min="0.4" max="2" step="0.1" value="1" aria-label="Скорость потока">
@@ -20,9 +21,61 @@
     <button id="pause" type="button" aria-label="Пауза" title="Пауза">⏸</button>
   </div>
 
+  <input id="fileInput" type="file" accept="image/*" multiple hidden>
+
   <div id="hint" class="hint">Нажми на машинку — она посигналит</div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+  <aside id="photoPanel" class="photo-panel" aria-label="Только что добавленные машины" hidden>
+    <div class="panel-row">
+      <div class="panel-meta">
+        <span class="panel-label">Новые машины</span>
+        <span id="uploadProgress" class="panel-progress" role="status" aria-live="polite"></span>
+      </div>
+      <button id="panelDone" class="panel-done" type="button">Готово</button>
+    </div>
+    <div id="panelStrip" class="panel-strip"></div>
+    <div class="panel-juice">
+      <label for="panelJuice">Сочность</label>
+      <input id="panelJuice" type="range" min="0" max="100" step="5" value="50">
+      <b id="panelJuiceValue">50%</b>
+    </div>
+  </aside>
+
+  <div id="dropOverlay" class="drop-overlay" hidden aria-hidden="true">
+    <div class="drop-card">
+      <span class="drop-icon" aria-hidden="true">🖼️</span>
+      <strong>Отпустите фото здесь</strong>
+      <span>Машины появятся на дороге</span>
+    </div>
+  </div>
+
+  <div id="cropModal" class="crop-modal" hidden>
+    <div class="crop-dialog" role="dialog" aria-modal="true" aria-labelledby="cropTitle">
+      <div class="crop-head">
+        <strong id="cropTitle">Обрезать фото</strong>
+        <button id="cropCancelX" class="crop-close" type="button" aria-label="Закрыть">×</button>
+      </div>
+      <div id="cropStage" class="crop-stage">
+        <img id="cropImage" alt="Исходное фото машины" draggable="false">
+        <div id="cropFrame" class="crop-frame" hidden>
+          <span class="crop-handle nw" data-handle="nw"></span>
+          <span class="crop-handle ne" data-handle="ne"></span>
+          <span class="crop-handle sw" data-handle="sw"></span>
+          <span class="crop-handle se" data-handle="se"></span>
+          <span class="crop-grid" aria-hidden="true"></span>
+        </div>
+      </div>
+      <div class="crop-actions">
+        <button id="cropReset" class="crop-ghost" type="button">Сбросить</button>
+        <button id="cropCancel" class="crop-ghost" type="button">Отмена</button>
+        <button id="cropApply" class="crop-primary" type="button">Применить</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="image-processing.js"></script>
+  <script src="car-store.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
