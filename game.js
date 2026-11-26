@@ -44,7 +44,7 @@
   var snowflakes = [];
   var plane = null;
   var planeTimer = 9 + Math.random() * 9;
-  var PLANE_TEXT = "1 «Л» молодцы";
+  var PLANE_TEXT = "1 «Л» — молодцы!";
   var G = {};
 
   var imageCache = {};
@@ -1776,20 +1776,21 @@
 
   function spawnPlane() {
     var dir = Math.random() < 0.5 ? 1 : -1;
-    var s = Math.max(0.7, Math.min(1.4, Math.min(W, H) / 900));
-    var fontSize = Math.max(11, Math.round(Math.min(W, H) * 0.019));
+    var minSide = Math.min(W, H);
+    var s = Math.max(1.0, Math.min(2.0, minSide / 620));
+    var fontSize = Math.max(18, Math.min(34, Math.round(minSide * 0.03)));
 
-    ctx.font = "700 " + fontSize + "px system-ui, -apple-system, sans-serif";
+    ctx.font = "800 " + fontSize + "px system-ui, -apple-system, sans-serif";
     var tw = ctx.measureText(PLANE_TEXT).width;
 
-    var bannerW = tw + fontSize * 2.2;
-    var bannerH = fontSize * 1.75;
+    var bannerW = tw + fontSize * 2.6;
+    var bannerH = fontSize * 1.9;
 
     plane = {
       dir: dir,
-      x: dir === 1 ? -bannerW - 80 : W + bannerW + 80,
-      y: H * (0.11 + Math.random() * 0.11),
-      speed: 55 + Math.random() * 30,
+      x: dir === 1 ? -bannerW - 100 : W + bannerW + 100,
+      y: H * (0.10 + Math.random() * 0.10),
+      speed: 50 + Math.random() * 25,
       phase: Math.random() * Math.PI * 2,
       s: s,
       fontSize: fontSize,
@@ -1806,52 +1807,81 @@
     var alpha = 1 - night * 0.55;
     if (alpha < 0.15) return;
 
-    var bob = reducedMotion ? 0 : Math.sin(t * 1.6 + p.phase) * 2.5 * s;
+    var bob = reducedMotion ? 0 : Math.sin(t * 1.6 + p.phase) * 2.8 * s;
     var py = p.y + bob;
     var dir = p.dir;
     var bw = p.bannerW;
     var bh = p.bannerH;
 
-    var gap = 20 * s;
-    var tailX = p.x - dir * 17 * s;
-    var nearX = p.x - dir * (18 * s + gap);
-    var bannerY = py + 7 * s;
+    var gap = 24 * s;
+    var tailX = p.x - dir * 18 * s;
+    var nearX = p.x - dir * (22 * s + gap);
+    var bannerY = py + 5 * s;
     var bx0 = dir === 1 ? nearX - bw : nearX;
     var by0 = bannerY - bh / 2;
     var farX = dir === 1 ? bx0 : bx0 + bw;
     var nearEdge = dir === 1 ? bx0 + bw : bx0;
-    var wave = reducedMotion ? 0 : Math.sin(t * 3 + p.phase) * 2 * s;
-
+    var wave = reducedMotion ? 0 : Math.sin(t * 2.6 + p.phase) * 2.6 * s;
     var prop = reducedMotion ? 0.5 : Math.abs(Math.sin(t * 28 + p.phase));
 
     ctx.save();
     ctx.globalAlpha = alpha;
 
-    /* Трос */
-    ctx.strokeStyle = "rgba(90, 105, 125, 0.8)";
-    ctx.lineWidth = Math.max(1, 1.2 * s);
+    /* Два троса к верхнему и нижнему углу полотна */
+    ctx.strokeStyle = "rgba(92, 108, 128, 0.85)";
+    ctx.lineWidth = Math.max(1, 1.1 * s);
     ctx.beginPath();
-    ctx.moveTo(tailX, py);
-    ctx.quadraticCurveTo((tailX + nearX) / 2, bannerY - 4 * s, nearX, bannerY);
+    ctx.moveTo(tailX, py - 2 * s);
+    ctx.quadraticCurveTo((tailX + nearX) / 2, by0 - 3 * s, nearEdge, by0);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(tailX, py + 2 * s);
+    ctx.quadraticCurveTo((tailX + nearX) / 2, by0 + bh + 3 * s, nearEdge, by0 + bh);
     ctx.stroke();
 
-    /* Полотно с лёгкой волной */
+    /* Полотно: мягкая тень, кремовый фон */
+    ctx.shadowColor = "rgba(24, 42, 68, 0.22)";
+    ctx.shadowBlur = 7 * s;
+    ctx.shadowOffsetX = 2 * s;
+    ctx.shadowOffsetY = 4 * s;
+
     ctx.beginPath();
     ctx.moveTo(nearEdge, by0);
-    ctx.lineTo(farX, by0 + wave);
-    ctx.lineTo(farX + dir * 8 * s, by0 + bh / 2 + wave);
+    ctx.quadraticCurveTo((nearEdge + farX) / 2, by0 - wave * 0.5, farX, by0 + wave);
+    ctx.lineTo(farX + dir * 11 * s, by0 + bh / 2 + wave);
     ctx.lineTo(farX, by0 + bh + wave);
-    ctx.lineTo(nearEdge, by0 + bh);
+    ctx.quadraticCurveTo((nearEdge + farX) / 2, by0 + bh + wave * 0.5, nearEdge, by0 + bh);
     ctx.closePath();
-    ctx.fillStyle = "rgba(255, 250, 235, 0.97)";
+    ctx.fillStyle = "#fff8e8";
     ctx.fill();
-    ctx.strokeStyle = "rgba(210, 120, 70, 0.85)";
-    ctx.lineWidth = Math.max(1, 1.4 * s);
+
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+
+    ctx.strokeStyle = "#d9673a";
+    ctx.lineWidth = Math.max(1.5, 2.2 * s);
+    ctx.stroke();
+
+    /* Внутренняя золотая рамка */
+    var inset = 3.2 * s;
+    var innerNear = nearEdge - dir * inset;
+    var innerFar = farX + dir * inset;
+
+    ctx.beginPath();
+    ctx.moveTo(innerNear, by0 + inset);
+    ctx.lineTo(innerFar, by0 + inset + wave);
+    ctx.lineTo(innerFar, by0 + bh - inset + wave);
+    ctx.lineTo(innerNear, by0 + bh - inset);
+    ctx.closePath();
+    ctx.strokeStyle = "rgba(240, 195, 106, 0.9)";
+    ctx.lineWidth = Math.max(1, 1.2 * s);
     ctx.stroke();
 
     /* Надпись */
-    ctx.fillStyle = "#7a3b1f";
-    ctx.font = "700 " + p.fontSize + "px system-ui, -apple-system, sans-serif";
+    ctx.fillStyle = "#8a2f1f";
+    ctx.font = "800 " + p.fontSize + "px system-ui, -apple-system, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(PLANE_TEXT, bx0 + bw / 2, by0 + bh / 2 + 1);
@@ -1861,45 +1891,80 @@
     ctx.scale(dir, 1);
 
     /* Пропеллер */
-    ctx.strokeStyle = "#5b6675";
-    ctx.lineWidth = Math.max(1, 1.4 * s);
+    ctx.strokeStyle = "#4b5a6b";
+    ctx.lineWidth = Math.max(1.2, 1.8 * s);
+    ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(20 * s, -7 * s - prop * 5 * s);
-    ctx.lineTo(20 * s, 7 * s + prop * 5 * s);
+    ctx.moveTo(23 * s, -10 * s - prop * 5 * s);
+    ctx.lineTo(23 * s, 10 * s + prop * 5 * s);
     ctx.stroke();
 
+    /* Мягкая тень корпуса */
+    ctx.shadowColor = "rgba(24, 42, 68, 0.2)";
+    ctx.shadowBlur = 6 * s;
+    ctx.shadowOffsetX = 2 * s;
+    ctx.shadowOffsetY = 4 * s;
+
     /* Фюзеляж */
-    ctx.fillStyle = "#eaf1f8";
-    ctx.strokeStyle = "#5b6675";
-    ctx.lineWidth = Math.max(1, 1.2 * s);
+    ctx.fillStyle = "#f7fbff";
+    ctx.strokeStyle = "#4b5a6b";
+    ctx.lineWidth = Math.max(1.2, 1.6 * s);
     ctx.beginPath();
-    ctx.ellipse(0, 0, 18 * s, 5.5 * s, 0, 0, Math.PI * 2);
+    ctx.moveTo(-18 * s, -5 * s);
+    ctx.quadraticCurveTo(-21 * s, 0, -18 * s, 5 * s);
+    ctx.lineTo(10 * s, 5 * s);
+    ctx.quadraticCurveTo(18 * s, 4 * s, 21 * s, 0);
+    ctx.quadraticCurveTo(18 * s, -4 * s, 10 * s, -5 * s);
+    ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
     /* Крыло */
-    ctx.fillStyle = "#cfdae7";
+    ctx.fillStyle = "#dfeaf5";
     ctx.beginPath();
-    ctx.moveTo(-2 * s, 0);
-    ctx.lineTo(7 * s, 0);
-    ctx.lineTo(2 * s, 9 * s);
+    ctx.moveTo(-4 * s, 2 * s);
+    ctx.quadraticCurveTo(5 * s, 2 * s, 8 * s, 12 * s);
+    ctx.quadraticCurveTo(-2 * s, 12 * s, -8 * s, 5 * s);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
     /* Хвост */
+    ctx.fillStyle = "#5b8fd6";
     ctx.beginPath();
-    ctx.moveTo(-16 * s, 0);
-    ctx.lineTo(-11 * s, 0);
-    ctx.lineTo(-14 * s, -8 * s);
+    ctx.moveTo(-17 * s, -2 * s);
+    ctx.lineTo(-10 * s, -2 * s);
+    ctx.lineTo(-14 * s, -13 * s);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    /* Кабина */
-    ctx.fillStyle = "#7fb8e6";
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+
+    /* Красная полоса на борту */
+    ctx.strokeStyle = "#e05a47";
+    ctx.lineWidth = Math.max(1.2, 2.4 * s);
     ctx.beginPath();
-    ctx.ellipse(8 * s, -2 * s, 3.5 * s, 2.2 * s, 0, 0, Math.PI * 2);
+    ctx.moveTo(-15 * s, 1.5 * s);
+    ctx.lineTo(13 * s, 1.5 * s);
+    ctx.stroke();
+
+    /* Кабина */
+    ctx.fillStyle = "#8ec9f0";
+    ctx.strokeStyle = "#4b5a6b";
+    ctx.lineWidth = Math.max(1, 1.2 * s);
+    ctx.beginPath();
+    ctx.ellipse(10 * s, -1.6 * s, 4.6 * s, 3 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    /* Кок */
+    ctx.fillStyle = "#f3b23c";
+    ctx.beginPath();
+    ctx.arc(21 * s, 0, 2.6 * s, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
