@@ -25,7 +25,8 @@
   var snowflakes = [];
   var plane = null;
   var planeTimer = 9 + Math.random() * 9;
-  var PLANE_TEXT = "1 «Л» — молодцы!";
+  var PLANE_TEXTS = ["1 «Л» — молодцы!", "Школа 1415 «Останкино»"];
+  var lastPlaneText = "";
   var G = {};
 
   var imageCache = {};
@@ -728,7 +729,14 @@
     var fontSize = Math.max(18, Math.min(34, Math.round(minSide * 0.03)));
 
     ctx.font = "800 " + fontSize + "px system-ui, -apple-system, sans-serif";
-    var tw = ctx.measureText(PLANE_TEXT).width;
+
+    var text = PLANE_TEXTS[Math.random() < 0.5 ? 0 : 1];
+    if (text === lastPlaneText) {
+      text = PLANE_TEXTS[0] === text ? PLANE_TEXTS[1] : PLANE_TEXTS[0];
+    }
+    lastPlaneText = text;
+
+    var tw = ctx.measureText(text).width;
 
     var bannerW = tw + fontSize * 2.6;
     var bannerH = fontSize * 1.9;
@@ -742,7 +750,8 @@
       s: s,
       fontSize: fontSize,
       bannerW: bannerW,
-      bannerH: bannerH
+      bannerH: bannerH,
+      text: text
     };
 
     startPlaneSound();
@@ -845,7 +854,7 @@
     ctx.font = "800 " + p.fontSize + "px system-ui, -apple-system, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(PLANE_TEXT, nearEdge - dir * bw * 0.5, by0 + bh / 2 + midWave * 0.5 + 1);
+    ctx.fillText(p.text, nearEdge - dir * bw * 0.5, by0 + bh / 2 + midWave * 0.5 + 1);
 
     /* Самолётик */
     ctx.translate(p.x, py);
