@@ -704,6 +704,35 @@
     els.clearRoadBtn.disabled = state.busy;
     els.refreshRoadBtn.disabled = state.busy;
 
+    els.tolerance.disabled = state.busy;
+    els.juice.disabled = state.busy;
+    els.removeBg.disabled = state.busy;
+
+    state.items.forEach(function (item) {
+      if (item.preview) {
+        item.preview.disabled = state.busy || item.busy || item.status !== "ready" || !item.result;
+      }
+      if (item.rotateBtn) {
+        item.rotateBtn.disabled = state.busy || item.busy || !item.source;
+      }
+      if (item.cropBtn) {
+        item.cropBtn.disabled = state.busy || item.busy || !item.source;
+      }
+      if (item.removeBtn) {
+        item.removeBtn.disabled = state.busy || item.busy;
+      }
+      if (item.nameInput) {
+        item.nameInput.disabled = state.busy;
+      }
+    });
+
+    if (els.publishedList) {
+      var dels = els.publishedList.querySelectorAll(".published-delete");
+      for (var d = 0; d < dels.length; d++) {
+        dels[d].disabled = state.busy || !state.publishedCanDelete;
+      }
+    }
+
     if (state.busy) els.addBtn.textContent = "Подождите…";
     else if (ready) els.addBtn.textContent = "Опубликовать на дороге (" + ready + ")";
     else els.addBtn.textContent = "Опубликовать на дороге";
@@ -989,6 +1018,12 @@
   async function commitAll() {
     if (state.busy) return;
 
+    var busyItem = state.items.some(function (i) { return i.busy; });
+    if (busyItem) {
+      setStatus("Дождитесь окончания обработки фото.", "error");
+      return;
+    }
+
     var ready = state.items.filter(function (i) {
       return i.status === "ready" && i.result;
     });
@@ -1197,7 +1232,6 @@
 
       var img = document.createElement("img");
       img.alt = entry.name || "Машина";
-      img.loading = "lazy";
       img.src = publishedImageSrc(entry);
       preview.appendChild(img);
 
@@ -1213,7 +1247,9 @@
       rm.type = "button";
       rm.className = "published-delete";
       rm.textContent = "🗑";
-      rm.title = "Удалить с дороги и из репозитория";
+      rm.title = state.publishedCanDelete
+        ? "Удалить с дороги и из репозитория"
+        : "Подключите GitHub, чтобы удалять машины";
       rm.setAttribute("aria-label", "Удалить " + cleanName(entry.name) + " с дороги");
       rm.disabled = !state.publishedCanDelete || state.busy;
       rm.addEventListener("click", function () {
