@@ -55,6 +55,18 @@ body {
   transition: transform 0.12s ease, background 0.12s ease;
 }
 
+.hud .add-photos {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .hud button:hover {
   background: rgba(255, 255, 255, 0.96);
 }

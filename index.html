@@ -4,14 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#bfe8fb">
+  <meta name="road-build" content="2026-11-26-2">
   <title>Дорога — машинки едут</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=20261126-2">
 </head>
 <body>
   <canvas id="scene" aria-label="Дорога, по которой едут машинки"></canvas>
 
   <div class="hud">
-    <button id="addPhotos" type="button" aria-label="Добавить фото машин" title="Добавить фото">📷</button>
+    <button id="addPhotos" class="add-photos" type="button" aria-label="Добавить фото машин" title="Добавить фото"><span aria-hidden="true">📷</span><span>Фото</span></button>
     <label class="speed" title="Скорость потока">
       <span aria-hidden="true">🐢</span>
       <input id="speed" type="range" min="0.4" max="2" step="0.1" value="1" aria-label="Скорость потока">
@@ -74,8 +75,8 @@
     </div>
   </div>
 
-  <script src="image-processing.js"></script>
-  <script src="car-store.js"></script>
-  <script src="game.js"></script>
+  <script src="image-processing.js?v=20261126-2"></script>
+  <script src="car-store.js?v=20261126-2"></script>
+  <script src="game.js?v=20261126-2"></script>
 </body>
 </html>
