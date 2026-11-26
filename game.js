@@ -12,28 +12,6 @@
   var soundBtn = document.getElementById("sound");
   var speedInput = document.getElementById("speed");
 
-  var addPhotosBtn = document.getElementById("addPhotos");
-  var garageBtn = document.getElementById("garageBtn");
-  var fileInput = document.getElementById("fileInput");
-  var photoPanel = document.getElementById("photoPanel");
-  var panelStrip = document.getElementById("panelStrip");
-  var panelLabel = document.getElementById("panelLabel");
-  var panelClear = document.getElementById("panelClear");
-  var uploadProgress = document.getElementById("uploadProgress");
-  var panelDone = document.getElementById("panelDone");
-  var panelJuice = document.getElementById("panelJuice");
-  var panelJuiceValue = document.getElementById("panelJuiceValue");
-  var dropOverlay = document.getElementById("dropOverlay");
-
-  var cropModal = document.getElementById("cropModal");
-  var cropStage = document.getElementById("cropStage");
-  var cropImage = document.getElementById("cropImage");
-  var cropFrame = document.getElementById("cropFrame");
-  var cropApply = document.getElementById("cropApply");
-  var cropCancel = document.getElementById("cropCancel");
-  var cropCancelX = document.getElementById("cropCancelX");
-  var cropReset = document.getElementById("cropReset");
-
   var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   var cars = [];
@@ -52,31 +30,8 @@
 
   var imageCache = {};
   var manifestSig = "";
-  var manifestLibrary = [];
-  var localLibrary = [];
-  var localReady = false;
-  var pendingQueue = [];
   var toastEl = document.getElementById("toast");
   var toastTimer = 0;
-
-  var JUICE_KEY = "road-juice-v1";
-  var juiceValue = 50;
-  var juicePending = 50;
-  var juiceRunning = false;
-  var juiceTimer = 0;
-
-  var uploadBusy = false;
-  var uploadTotal = 0;
-  var uploadDone = 0;
-  var uploadErrors = 0;
-
-  var localEditBusy = false;
-  var cropItemId = null;
-  var cropBusy = false;
-  var cropNorm = { x: 0.02, y: 0.02, w: 0.96, h: 0.96 };
-  var cropRect = { x: 0, y: 0, w: 0, h: 0 };
-  var cropSize = { w: 0, h: 0 };
-  var cropDrag = null;
 
   var W = 0;
   var H = 0;
@@ -185,53 +140,32 @@
   }
 
   function loadLibrary(force) {
-    return Promise.all([fetchManifest(), ensureLocalLoaded()]).then(function (results) {
-      var list = results[0];
-      var before = library.length;
-
+    return fetchManifest().then(function (list) {
       /* Сеть недоступна — оставляем то, что уже едет по дороге */
-      if (list === null) {
-        combineLibrary();
-        return { changed: false, added: 0, failed: true };
-      }
+      if (list === null) return { changed: false, added: 0, failed: true };
 
       if (!Array.isArray(list)) list = [];
 
       var sig = JSON.stringify(list);
-      if (!force && sig === manifestSig) {
-        combineLibrary();
-        return { changed: false, added: 0 };
-      }
+      if (!force && sig === manifestSig) return { changed: false, added: 0 };
 
       manifestSig = sig;
 
       return Promise.all(list.map(libraryItem)).then(function (items) {
-        var hadManifestCars = false;
-
-        for (var i = 0; i < cars.length; i++) {
-          if (!cars[i].local) { hadManifestCars = true; break; }
-        }
-
+        var prev = library.length;
         var ok = items.filter(Boolean);
 
         /* Если картинка ещё не доехала до CDN — попробуем в следующий раз */
         if (ok.length < items.length) manifestSig = "";
 
-        manifestLibrary = ok;
-        combineLibrary();
+        library = ok;
+        updateHint();
 
         /* Пустой список — это команда «очистить дорогу»,
-           а не сбой загрузки. Локальные машины остаются. */
-        if (!list.length) {
-          clearManifestCars();
-          if (hadManifestCars) {
-            toast(localLibrary.length
-              ? "Общие машины убраны с дороги"
-              : "Дорога очищена");
-          }
-        }
+           а не сбой загрузки. */
+        if (!list.length && cars.length) clearCars();
 
-        return { changed: true, added: Math.max(0, library.length - before) };
+        return { changed: true, added: library.length - prev };
       });
     });
   }
@@ -245,65 +179,10 @@
       .catch(function () { return null; });
   }
 
-  function combineLibrary() {
-    library = manifestLibrary.concat(localLibrary);
-    updateHint();
-  }
-
-  function clearManifestCars() {
-    for (var i = cars.length - 1; i >= 0; i--) {
-      if (!cars[i].local) cars.splice(i, 1);
-    }
-
+  function clearCars() {
+    cars.length = 0;
+    toast("Дорога очищена");
     if (!running) draw();
-  }
-
-  function ensureLocalLoaded() {
-    if (localReady) return Promise.resolve(localLibrary);
-
-    if (!window.RoadDB) {
-      localReady = true;
-      return Promise.resolve(localLibrary);
-    }
-
-    return window.RoadDB.migrateFromLocalStorage()
-      .then(function (count) {
-        if (count > 0) {
-          toast(count === 1
-            ? "Старая машина перенесена в новое хранилище"
-            : "Старые машины перенесены в новое хранилище");
-        }
-        return window.RoadDB.getAll();
-      })
-      .then(function (records) {
-        return Promise.all(records.map(recordToItem));
-      })
-      .then(function (items) {
-        localLibrary = items.filter(Boolean);
-        localReady = true;
-        combineLibrary();
-        return localLibrary;
-      })
-      .catch(function () {
-        localReady = true;
-        return localLibrary;
-      });
-  }
-
-  function recordToItem(record) {
-    return loadImage(record.image).then(function (img) {
-      if (!img || !img.naturalWidth) return null;
-
-      return {
-        id: record.id,
-        img: img,
-        aspect: img.naturalWidth / img.naturalHeight,
-        name: record.name || "",
-        facing: record.facing === "left" ? "left" : "right",
-        local: true,
-        record: record
-      };
-    });
   }
 
   function libraryItem(item) {
@@ -311,12 +190,10 @@
 
     if (cached) {
       return Promise.resolve({
-        id: "manifest:" + item.file,
         img: cached.img,
         aspect: cached.aspect,
         name: item.name || "",
-        facing: item.facing === "left" ? "left" : "right",
-        local: false
+        facing: item.facing === "left" ? "left" : "right"
       });
     }
 
@@ -328,12 +205,10 @@
       imageCache[item.file] = { img: img, aspect: aspect };
 
       return {
-        id: "manifest:" + item.file,
         img: img,
         aspect: aspect,
         name: item.name || "",
-        facing: item.facing === "left" ? "left" : "right",
-        local: false
+        facing: item.facing === "left" ? "left" : "right"
       };
     });
   }
@@ -369,962 +244,6 @@
   }
 
   /* ============================================================
-     Пакетная загрузка фото и панель новых машин
-     ============================================================ */
-
-  function findLocalItem(id) {
-    for (var i = 0; i < localLibrary.length; i++) {
-      if (localLibrary[i].id === id) return localLibrary[i];
-    }
-    return null;
-  }
-
-  function nextTick() {
-    return new Promise(function (resolve) {
-      setTimeout(resolve, 24);
-    });
-  }
-
-  function showPanel() {
-    if (!photoPanel) return;
-    photoPanel.hidden = false;
-    document.body.classList.add("panel-open");
-    updatePanelControls();
-  }
-
-  function hidePanel() {
-    if (!photoPanel) return;
-    photoPanel.hidden = true;
-    document.body.classList.remove("panel-open");
-  }
-
-  function updatePanelControls() {
-    if (!panelClear) return;
-    panelClear.disabled = uploadBusy || localEditBusy || !localLibrary.length;
-  }
-
-  function openGarage() {
-    if (uploadBusy || localEditBusy) {
-      toast("Дождитесь окончания обработки");
-      return;
-    }
-
-    if (!localLibrary.length) {
-      toast("Локальных машин пока нет");
-      return;
-    }
-
-    if (panelLabel) panelLabel.textContent = "Мои машины";
-    if (panelStrip) panelStrip.textContent = "";
-
-    for (var i = 0; i < localLibrary.length; i++) {
-      var item = localLibrary[i];
-      item.thumbEl = null;
-      item.thumbImg = null;
-      item.previewBtn = null;
-      item.rotateBtn = null;
-      item.cropBtn = null;
-      item.removeBtn = null;
-      addPanelItem(item);
-    }
-
-    showPanel();
-    setProgress("Локальных машин: " + localLibrary.length);
-  }
-
-  function clearAllLocal() {
-    if (uploadBusy || localEditBusy || juiceRunning) {
-      toast("Дождитесь окончания обработки");
-      return;
-    }
-
-    if (!localLibrary.length) {
-      toast("Локальных машин нет");
-      return;
-    }
-
-    if (!window.confirm("Удалить все локальные машины? Общие машины на дороге останутся.")) {
-      return;
-    }
-
-    localLibrary = [];
-    pendingQueue = [];
-
-    for (var i = cars.length - 1; i >= 0; i--) {
-      if (cars[i].local) cars.splice(i, 1);
-    }
-
-    combineLibrary();
-
-    if (panelStrip) panelStrip.textContent = "";
-    hidePanel();
-
-    if (window.RoadDB) {
-      window.RoadDB.clearAll().catch(function () {
-        toast("Не удалось очистить локальное хранилище");
-      });
-    }
-
-    toast("Локальные машины удалены");
-    if (!running) draw();
-  }
-
-  function setProgress(text) {
-    if (uploadProgress) uploadProgress.textContent = text || "";
-  }
-
-  function updateJuiceLabel() {
-    if (!panelJuiceValue) return;
-
-    var v = parseInt(panelJuice ? panelJuice.value : juiceValue, 10);
-    if (!isFinite(v)) v = 0;
-
-    panelJuiceValue.textContent = v === 50 ? "50% · авто" : v + "%";
-  }
-
-  function readJuiceValue() {
-    var v = 50;
-
-    try {
-      var raw = localStorage.getItem(JUICE_KEY);
-      if (raw !== null) {
-        var n = parseInt(raw, 10);
-        if (isFinite(n)) v = n;
-      }
-    } catch (e) { /* приватный режим */ }
-
-    juiceValue = Math.max(0, Math.min(100, v));
-    juicePending = juiceValue;
-
-    if (panelJuice) panelJuice.value = String(juiceValue);
-    updateJuiceLabel();
-  }
-
-  function setJuice(value) {
-    var v = parseInt(value, 10);
-    if (!isFinite(v)) v = 50;
-    v = Math.max(0, Math.min(100, v));
-
-    juiceValue = v;
-    juicePending = v;
-
-    if (panelJuice) panelJuice.value = String(v);
-    updateJuiceLabel();
-
-    try {
-      localStorage.setItem(JUICE_KEY, String(v));
-    } catch (e) { /* приватный режим */ }
-
-    clearTimeout(juiceTimer);
-    juiceTimer = setTimeout(startJuiceLoop, 420);
-  }
-
-  function startJuiceLoop() {
-    if (juiceRunning || uploadBusy || localEditBusy) return;
-    juiceRunning = true;
-    runJuiceLoop();
-  }
-
-  async function runJuiceLoop() {
-    try {
-      while (juiceRunning) {
-        var target = juicePending;
-        await applyJuice(target);
-
-        if (juicePending === target) {
-          juiceRunning = false;
-        }
-      }
-    } catch (e) {
-      juiceRunning = false;
-      if (window.console) console.warn("Не удалось обновить сочность", e);
-    }
-  }
-
-  async function applyJuice(value) {
-    var targets = localLibrary.filter(function (item) {
-      return item.record && item.record.source;
-    });
-
-    if (!targets.length) return;
-
-    if (panelJuice) panelJuice.disabled = true;
-    var applied = 0;
-
-    for (var i = 0; i < targets.length; i++) {
-      if (juicePending !== value) break;
-
-      var item = targets[i];
-      setProgress("Обновляю " + (i + 1) + " из " + targets.length + "…");
-
-      if (localLibrary.indexOf(item) === -1) continue;
-
-      try {
-        var srcImg = await loadImage(item.record.source);
-        if (!srcImg || !srcImg.naturalWidth) continue;
-        if (localLibrary.indexOf(item) === -1) continue;
-
-        var result = window.RoadImage.processPhoto(
-          srcImg,
-          true,
-          item.record.tolerance || 50,
-          value
-        );
-
-        var newImg = await loadImage(result.dataUrl);
-        if (!newImg || !newImg.naturalWidth) continue;
-        if (localLibrary.indexOf(item) === -1) continue;
-
-        item.img = newImg;
-        item.aspect = newImg.naturalWidth / newImg.naturalHeight;
-        item.record.image = result.dataUrl;
-        item.record.juice = value;
-
-        await window.RoadDB.put(item.record);
-
-        if (item.thumbImg) item.thumbImg.src = result.dataUrl;
-        updateLocalItemOnRoad(item);
-        applied++;
-      } catch (e) {
-        if (window.console) console.warn("Не удалось обновить машину", e);
-      }
-
-      await nextTick();
-    }
-
-    if (panelJuice) panelJuice.disabled = false;
-
-    if (juicePending === value) {
-      setProgress(applied ? "Сочность обновлена" : "");
-    }
-  }
-
-  function updateLocalItemOnRoad(item) {
-    for (var i = 0; i < cars.length; i++) {
-      var c = cars[i];
-      if (c.itemId !== item.id) continue;
-
-      c.img = item.img;
-      c.aspect = item.aspect;
-      c.h = c.lane.carH * c.sizeMul;
-      c.w = c.h * c.aspect;
-
-      if (c.w > W * 0.5) {
-        c.w = W * 0.5;
-        c.h = c.w / c.aspect;
-      }
-
-      var shouldFace = c.dir === 1 ? "right" : "left";
-      c.flip = item.facing !== shouldFace;
-    }
-
-    if (!running) draw();
-  }
-
-  function setItemBusy(item, busy) {
-    item.busy = !!busy;
-
-    if (item.thumbEl) {
-      item.thumbEl.classList.toggle("is-busy", !!busy);
-    }
-
-    [item.previewBtn, item.rotateBtn, item.cropBtn, item.removeBtn].forEach(function (btn) {
-      if (btn) btn.disabled = !!busy;
-    });
-  }
-
-  /* Пересобирает готовую картинку из исходника: автообрезка бумаги,
-     очистка фона и сочность снова проходят целиком. */
-  async function updateItemFromSource(item, newSource) {
-    if (!item || !item.record) throw new Error("Машина не найдена");
-
-    var srcImg = await loadImage(newSource);
-    if (!srcImg || !srcImg.naturalWidth) throw new Error("Не удалось открыть фото");
-
-    var result = window.RoadImage.processPhoto(
-      srcImg,
-      true,
-      item.record.tolerance || 50,
-      juiceValue
-    );
-
-    var newImg = await loadImage(result.dataUrl);
-    if (!newImg || !newImg.naturalWidth) throw new Error("Не удалось обработать фото");
-
-    item.record.source = newSource;
-    item.record.image = result.dataUrl;
-    item.record.juice = juiceValue;
-    item.record.updatedAt = Date.now();
-
-    await window.RoadDB.put(item.record);
-
-    item.img = newImg;
-    item.aspect = newImg.naturalWidth / newImg.naturalHeight;
-
-    if (item.thumbImg) item.thumbImg.src = result.dataUrl;
-    updateLocalItemOnRoad(item);
-  }
-
-  function rotateSourceDataUrl(src) {
-    return loadImage(src).then(function (img) {
-      if (!img || !img.naturalWidth) throw new Error("Не удалось открыть фото");
-
-      var w = img.naturalWidth;
-      var h = img.naturalHeight;
-
-      var canvas = document.createElement("canvas");
-      canvas.width = h;
-      canvas.height = w;
-
-      var c = canvas.getContext("2d");
-      c.translate(h, 0);
-      c.rotate(Math.PI / 2);
-      c.drawImage(img, 0, 0);
-
-      var keepAlpha = /^data:image\/(png|webp|gif)/i.test(src);
-      return canvas.toDataURL(keepAlpha ? "image/png" : "image/jpeg", 0.92);
-    });
-  }
-
-  function cropSourceDataUrl(src, norm) {
-    return loadImage(src).then(function (img) {
-      if (!img || !img.naturalWidth) throw new Error("Не удалось открыть фото");
-
-      var iw = img.naturalWidth;
-      var ih = img.naturalHeight;
-
-      var sx = Math.round(norm.x * iw);
-      var sy = Math.round(norm.y * ih);
-      var sw = Math.round(norm.w * iw);
-      var sh = Math.round(norm.h * ih);
-
-      sx = Math.max(0, Math.min(iw - 1, sx));
-      sy = Math.max(0, Math.min(ih - 1, sy));
-      sw = Math.max(1, Math.min(iw - sx, sw));
-      sh = Math.max(1, Math.min(ih - sy, sh));
-
-      var canvas = document.createElement("canvas");
-      canvas.width = sw;
-      canvas.height = sh;
-
-      var c = canvas.getContext("2d");
-      c.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-
-      var keepAlpha = /^data:image\/(png|webp|gif)/i.test(src);
-      return canvas.toDataURL(keepAlpha ? "image/png" : "image/jpeg", 0.92);
-    });
-  }
-
-  function runItemEdit(item, label, task) {
-    if (!item || item.busy) return;
-
-    if (uploadBusy || localEditBusy || juiceRunning) {
-      toast("Дождитесь окончания обработки");
-      return;
-    }
-
-    localEditBusy = true;
-    setItemBusy(item, true);
-    if (panelJuice) panelJuice.disabled = true;
-    setProgress(label);
-
-    Promise.resolve()
-      .then(task)
-      .then(function () {
-        toast("Машина обновлена");
-      })
-      .catch(function (e) {
-        if (window.console) console.warn("Не удалось обновить машину", e);
-        toast("Не удалось обновить машину");
-      })
-      .then(function () {
-        localEditBusy = false;
-        setItemBusy(item, false);
-        if (panelJuice) panelJuice.disabled = uploadBusy;
-        updatePanelControls();
-        setProgress("");
-      });
-  }
-
-  function rotateLocalItem(id) {
-    var item = findLocalItem(id);
-    if (!item || item.busy) return;
-
-    runItemEdit(item, "Поворачиваю машину…", function () {
-      var source = item.record.source || item.record.image;
-      return rotateSourceDataUrl(source).then(function (rotated) {
-        return updateItemFromSource(item, rotated);
-      });
-    });
-  }
-
-  function cropClamp(value, min, max) {
-    return value < min ? min : value > max ? max : value;
-  }
-
-  function syncCropFrame() {
-    if (!cropSize.w || !cropSize.h) return;
-
-    var W = cropSize.w;
-    var H = cropSize.h;
-
-    var x = Math.round(cropNorm.x * W);
-    var y = Math.round(cropNorm.y * H);
-    var w = Math.round(cropNorm.w * W);
-    var h = Math.round(cropNorm.h * H);
-
-    x = cropClamp(x, 0, Math.max(0, W - 2));
-    y = cropClamp(y, 0, Math.max(0, H - 2));
-    w = cropClamp(w, 2, W - x);
-    h = cropClamp(h, 2, H - y);
-
-    cropRect = { x: x, y: y, w: w, h: h };
-
-    cropFrame.style.left = x + "px";
-    cropFrame.style.top = y + "px";
-    cropFrame.style.width = w + "px";
-    cropFrame.style.height = h + "px";
-  }
-
-  function resetCropFrame() {
-    if (!cropSize.w || !cropSize.h) return;
-
-    cropNorm = { x: 0.02, y: 0.02, w: 0.96, h: 0.96 };
-    syncCropFrame();
-  }
-
-  function initCropStage() {
-    if (!cropItemId || cropModal.hidden) return;
-
-    var w = cropImage.clientWidth;
-    var h = cropImage.clientHeight;
-
-    if (!w || !h) {
-      setTimeout(initCropStage, 20);
-      return;
-    }
-
-    cropSize.w = w;
-    cropSize.h = h;
-
-    syncCropFrame();
-    cropFrame.hidden = false;
-  }
-
-  function openCropModal(id) {
-    var item = findLocalItem(id);
-    if (!item || item.busy) return;
-
-    if (uploadBusy || localEditBusy || juiceRunning) {
-      toast("Дождитесь окончания обработки");
-      return;
-    }
-
-    cropItemId = id;
-    cropBusy = false;
-    cropDrag = null;
-    cropNorm = { x: 0.02, y: 0.02, w: 0.96, h: 0.96 };
-    cropFrame.hidden = true;
-
-    cropApply.disabled = false;
-    cropApply.textContent = "Применить";
-    cropReset.disabled = false;
-    cropCancel.disabled = false;
-    if (cropCancelX) cropCancelX.disabled = false;
-
-    cropImage.onload = initCropStage;
-    cropImage.onerror = function () {
-      toast("Не удалось открыть фото");
-      closeCropModal();
-    };
-
-    cropImage.removeAttribute("src");
-    cropModal.hidden = false;
-    document.body.classList.add("crop-open");
-
-    cropImage.src = item.record.source || item.record.image;
-
-    if (cropImage.complete && cropImage.naturalWidth) {
-      setTimeout(initCropStage, 0);
-    }
-  }
-
-  function closeCropModal() {
-    cropModal.hidden = true;
-    document.body.classList.remove("crop-open");
-
-    cropItemId = null;
-    cropDrag = null;
-    cropBusy = false;
-
-    document.removeEventListener("pointermove", cropPointerMove);
-    document.removeEventListener("pointerup", cropPointerEnd);
-    document.removeEventListener("pointercancel", cropPointerEnd);
-
-    cropFrame.hidden = true;
-    cropImage.removeAttribute("src");
-  }
-
-  function cropPointerDown(e) {
-    if (cropBusy || !cropItemId || !cropSize.w) return;
-
-    var handle = e.target && e.target.getAttribute
-      ? e.target.getAttribute("data-handle")
-      : null;
-
-    cropDrag = {
-      mode: handle ? "resize" : "move",
-      handle: handle || "",
-      startX: e.clientX,
-      startY: e.clientY,
-      rect: {
-        x: cropRect.x,
-        y: cropRect.y,
-        w: cropRect.w,
-        h: cropRect.h
-      }
-    };
-
-    if (e.target.setPointerCapture) {
-      try {
-        e.target.setPointerCapture(e.pointerId);
-      } catch (err) { /* ignore */ }
-    }
-
-    document.removeEventListener("pointermove", cropPointerMove);
-    document.removeEventListener("pointerup", cropPointerEnd);
-    document.removeEventListener("pointercancel", cropPointerEnd);
-    document.addEventListener("pointermove", cropPointerMove, { passive: false });
-    document.addEventListener("pointerup", cropPointerEnd);
-    document.addEventListener("pointercancel", cropPointerEnd);
-
-    e.preventDefault();
-  }
-
-  function cropPointerMove(e) {
-    if (!cropDrag || cropBusy) return;
-
-    e.preventDefault();
-
-    var W = cropSize.w;
-    var H = cropSize.h;
-    if (!W || !H) return;
-
-    var min = Math.min(28, W * 0.3, H * 0.3);
-    if (min < 6) min = 6;
-
-    var dx = e.clientX - cropDrag.startX;
-    var dy = e.clientY - cropDrag.startY;
-    var r = cropDrag.rect;
-
-    var x = r.x;
-    var y = r.y;
-    var w = r.w;
-    var h = r.h;
-
-    if (cropDrag.mode === "move") {
-      x = cropClamp(r.x + dx, 0, W - r.w);
-      y = cropClamp(r.y + dy, 0, H - r.h);
-    } else {
-      var left = r.x;
-      var right = r.x + r.w;
-      var top = r.y;
-      var bottom = r.y + r.h;
-
-      if (cropDrag.handle.indexOf("w") !== -1) {
-        left = cropClamp(left + dx, 0, right - min);
-      }
-      if (cropDrag.handle.indexOf("e") !== -1) {
-        right = cropClamp(right + dx, left + min, W);
-      }
-      if (cropDrag.handle.indexOf("n") !== -1) {
-        top = cropClamp(top + dy, 0, bottom - min);
-      }
-      if (cropDrag.handle.indexOf("s") !== -1) {
-        bottom = cropClamp(bottom + dy, top + min, H);
-      }
-
-      x = left;
-      y = top;
-      w = right - left;
-      h = bottom - top;
-    }
-
-    cropNorm = {
-      x: x / W,
-      y: y / H,
-      w: w / W,
-      h: h / H
-    };
-
-    syncCropFrame();
-  }
-
-  function cropPointerEnd() {
-    cropDrag = null;
-
-    document.removeEventListener("pointermove", cropPointerMove);
-    document.removeEventListener("pointerup", cropPointerEnd);
-    document.removeEventListener("pointercancel", cropPointerEnd);
-  }
-
-  async function applyCrop() {
-    if (cropBusy) return;
-
-    var item = findLocalItem(cropItemId);
-    if (!item) {
-      closeCropModal();
-      return;
-    }
-
-    if (uploadBusy || localEditBusy || juiceRunning) {
-      toast("Дождитесь окончания обработки");
-      return;
-    }
-
-    if (cropNorm.w < 0.02 || cropNorm.h < 0.02) {
-      toast("Рамка слишком маленькая");
-      return;
-    }
-
-    cropBusy = true;
-    localEditBusy = true;
-
-    cropApply.disabled = true;
-    cropApply.textContent = "Обработка…";
-    cropReset.disabled = true;
-    cropCancel.disabled = true;
-    if (cropCancelX) cropCancelX.disabled = true;
-    if (panelJuice) panelJuice.disabled = true;
-
-    try {
-      var source = item.record.source || item.record.image;
-      var cropped = await cropSourceDataUrl(source, cropNorm);
-
-      await updateItemFromSource(item, cropped);
-      closeCropModal();
-      toast("Машина обрезана");
-    } catch (e) {
-      if (window.console) console.warn("Не удалось обрезать фото", e);
-      toast("Не удалось обрезать фото");
-    } finally {
-      cropBusy = false;
-      localEditBusy = false;
-
-      cropApply.disabled = false;
-      cropApply.textContent = "Применить";
-      cropReset.disabled = false;
-      cropCancel.disabled = false;
-      if (cropCancelX) cropCancelX.disabled = false;
-      if (panelJuice) panelJuice.disabled = uploadBusy;
-      updatePanelControls();
-    }
-  }
-
-  function updateThumbState(item) {
-    if (!item.thumbEl) return;
-    item.thumbEl.classList.toggle("is-flipped", item.facing === "left");
-  }
-
-  function addPanelItem(item) {
-    if (!panelStrip || !item.record) return;
-    if (item.thumbEl) {
-      item.thumbImg.src = item.record.image;
-      return;
-    }
-
-    var wrap = document.createElement("div");
-    wrap.className = "thumb";
-
-    var preview = document.createElement("button");
-    preview.type = "button";
-    preview.className = "thumb-preview";
-    preview.title = "Нажмите, чтобы отразить машину";
-    preview.setAttribute("aria-label", "Отразить машину " + (item.name || ""));
-
-    var img = document.createElement("img");
-    img.src = item.record.image;
-    img.alt = item.name || "Машина";
-    img.draggable = false;
-
-    var mark = document.createElement("span");
-    mark.className = "thumb-flip";
-    mark.textContent = "↔";
-    mark.setAttribute("aria-hidden", "true");
-
-    preview.appendChild(img);
-    preview.appendChild(mark);
-    preview.addEventListener("click", function () {
-      flipLocalItem(item.id);
-    });
-
-    var rm = document.createElement("button");
-    rm.type = "button";
-    rm.className = "thumb-remove";
-    rm.textContent = "×";
-    rm.title = "Удалить машину";
-    rm.setAttribute("aria-label", "Удалить " + (item.name || "машину"));
-    rm.addEventListener("click", function (e) {
-      e.stopPropagation();
-      removeLocalItem(item.id);
-    });
-
-    var tools = document.createElement("div");
-    tools.className = "thumb-tools";
-
-    var rotBtn = document.createElement("button");
-    rotBtn.type = "button";
-    rotBtn.className = "thumb-tool";
-    rotBtn.textContent = "↻";
-    rotBtn.title = "Повернуть на 90° по часовой стрелке";
-    rotBtn.setAttribute("aria-label", "Повернуть " + (item.name || "машину") + " на 90°");
-    rotBtn.addEventListener("click", function (e) {
-      e.stopPropagation();
-      rotateLocalItem(item.id);
-    });
-
-    var cropBtn = document.createElement("button");
-    cropBtn.type = "button";
-    cropBtn.className = "thumb-tool";
-    cropBtn.textContent = "✂️";
-    cropBtn.title = "Обрезать фото";
-    cropBtn.setAttribute("aria-label", "Обрезать фото " + (item.name || "машины"));
-    cropBtn.addEventListener("click", function (e) {
-      e.stopPropagation();
-      openCropModal(item.id);
-    });
-
-    tools.appendChild(rotBtn);
-    tools.appendChild(cropBtn);
-
-    wrap.appendChild(preview);
-    wrap.appendChild(tools);
-    wrap.appendChild(rm);
-    panelStrip.appendChild(wrap);
-
-    item.thumbEl = wrap;
-    item.thumbImg = img;
-    item.previewBtn = preview;
-    item.rotateBtn = rotBtn;
-    item.cropBtn = cropBtn;
-    item.removeBtn = rm;
-    updateThumbState(item);
-    setItemBusy(item, !!item.busy);
-  }
-
-  function flipLocalItem(id) {
-    var item = findLocalItem(id);
-    if (!item) return;
-
-    item.facing = item.facing === "left" ? "right" : "left";
-
-    if (item.record && window.RoadDB) {
-      item.record.facing = item.facing;
-      window.RoadDB.put(item.record).catch(function () {
-        toast("Не удалось сохранить поворот");
-      });
-    }
-
-    for (var i = 0; i < cars.length; i++) {
-      var c = cars[i];
-      if (c.itemId !== item.id) continue;
-      var shouldFace = c.dir === 1 ? "right" : "left";
-      c.flip = item.facing !== shouldFace;
-    }
-
-    updateThumbState(item);
-    if (!running) draw();
-  }
-
-  function removeLocalItem(id) {
-    var item = findLocalItem(id);
-    if (!item || item.busy) return;
-
-    localLibrary = localLibrary.filter(function (i) { return i.id !== id; });
-    pendingQueue = pendingQueue.filter(function (queuedId) { return queuedId !== id; });
-
-    for (var i = cars.length - 1; i >= 0; i--) {
-      if (cars[i].itemId === id) cars.splice(i, 1);
-    }
-
-    combineLibrary();
-
-    if (item.thumbEl && item.thumbEl.parentNode) {
-      item.thumbEl.parentNode.removeChild(item.thumbEl);
-    }
-
-    if (window.RoadDB && item.record) {
-      window.RoadDB.remove(id).catch(function () {
-        toast("Не удалось удалить машину из хранилища");
-      });
-    }
-
-    toast("Машина убрана с дороги");
-    if (!running) draw();
-    updatePanelControls();
-
-    if (!uploadBusy && panelStrip && !panelStrip.children.length) hidePanel();
-  }
-
-  function compressFile(file) {
-    return new Promise(function (resolve, reject) {
-      var url = URL.createObjectURL(file);
-      var img = new Image();
-
-      function fail(err) {
-        URL.revokeObjectURL(url);
-        reject(err);
-      }
-
-      img.onload = function () {
-        try {
-          var nw = img.naturalWidth || img.width;
-          var nh = img.naturalHeight || img.height;
-          if (!nw || !nh) throw new Error("Пустое изображение");
-
-          var scale = Math.min(1, 800 / Math.max(nw, nh));
-          var w = Math.max(1, Math.round(nw * scale));
-          var h = Math.max(1, Math.round(nh * scale));
-
-          var canvas = document.createElement("canvas");
-          canvas.width = w;
-          canvas.height = h;
-
-          var c = canvas.getContext("2d");
-          c.imageSmoothingEnabled = true;
-          c.imageSmoothingQuality = "high";
-          c.drawImage(img, 0, 0, w, h);
-
-          var keepAlpha = /png|webp|gif/i.test(file.type || "");
-          var dataUrl = keepAlpha
-            ? canvas.toDataURL("image/png")
-            : canvas.toDataURL("image/jpeg", 0.9);
-
-          URL.revokeObjectURL(url);
-          resolve({ dataUrl: dataUrl, width: w, height: h });
-        } catch (e) {
-          fail(e);
-        }
-      };
-
-      img.onerror = function () {
-        fail(new Error("Не удалось открыть файл. Если это HEIC с iPhone, сохраните фото как JPEG."));
-      };
-
-      img.src = url;
-    });
-  }
-
-  async function addFiles(fileList) {
-    var files = Array.prototype.slice.call(fileList || []).filter(function (f) {
-      return /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|heic|heif)$/i.test(f.name);
-    });
-
-    if (!files.length) {
-      toast("Выберите фотографии");
-      return;
-    }
-
-    if (uploadBusy) {
-      toast("Дождитесь окончания загрузки");
-      return;
-    }
-
-    if (!window.RoadDB || !window.RoadDB.isSupported()) {
-      toast("Браузер не поддерживает большое локальное хранилище");
-      return;
-    }
-
-    if (!window.RoadImage) {
-      toast("Не загрузился обработчик фото");
-      return;
-    }
-
-    uploadBusy = true;
-    uploadTotal = files.length;
-    uploadDone = 0;
-    uploadErrors = 0;
-
-    if (panelLabel) panelLabel.textContent = "Новые машины";
-    showPanel();
-    updateJuiceLabel();
-    if (panelJuice) panelJuice.disabled = true;
-    setProgress("Загружено 0 из " + files.length);
-
-    try {
-      for (var i = 0; i < files.length; i++) {
-        setProgress("Обработка " + (i + 1) + " из " + files.length + "…");
-        await nextTick();
-
-        var record = null;
-
-        try {
-          var src = await compressFile(files[i]);
-          var img = await loadImage(src.dataUrl);
-          if (!img || !img.naturalWidth) throw new Error("Пустое изображение");
-
-          var result = window.RoadImage.processPhoto(img, true, 50, juiceValue);
-
-          record = {
-            id: "local-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7),
-            name: "Машина " + (localLibrary.length + 1),
-            facing: "right",
-            image: result.dataUrl,
-            source: src.dataUrl,
-            juice: juiceValue,
-            tolerance: 50,
-            createdAt: Date.now()
-          };
-
-          await window.RoadDB.put(record);
-
-          var item = await recordToItem(record);
-          if (!item) throw new Error("Не удалось открыть результат");
-
-          localLibrary.push(item);
-          combineLibrary();
-          addPanelItem(item);
-          releaseItem(item);
-
-          uploadDone++;
-        } catch (e) {
-          if (record) {
-            try {
-              await window.RoadDB.remove(record.id);
-            } catch (err) { /* ignore */ }
-          }
-
-          uploadErrors++;
-          if (window.console) console.warn("Не удалось добавить фото", e);
-        }
-
-        var doneCount = uploadDone + uploadErrors;
-        setProgress("Загружено " + doneCount + " из " + files.length +
-          (uploadErrors ? " · ошибок: " + uploadErrors : ""));
-        await nextTick();
-      }
-    } finally {
-      uploadBusy = false;
-      if (panelJuice) panelJuice.disabled = false;
-      updatePanelControls();
-
-      if (uploadDone && uploadErrors) {
-        toast("Машин: " + uploadDone + ", не удалось: " + uploadErrors);
-      } else if (uploadDone) {
-        toast(uploadDone === 1
-          ? "Машина на дороге!"
-          : "Машин на дороге: " + uploadDone);
-      } else if (uploadErrors) {
-        toast("Не удалось обработать фото");
-      }
-
-      if (!uploadErrors) {
-        setProgress("Загружено " + uploadDone + " из " + files.length);
-      }
-    }
-  }
-
-  /* ============================================================
      Машинки: спавн и движение
      ============================================================ */
 
@@ -1346,22 +265,7 @@
     return false;
   }
 
-  function takeQueuedItem(pool) {
-    for (var q = 0; q < pendingQueue.length; q++) {
-      var id = pendingQueue[q];
-
-      for (var i = 0; i < pool.length; i++) {
-        if (pool[i].id === id) {
-          pendingQueue.splice(q, 1);
-          return pool[i];
-        }
-      }
-    }
-
-    return null;
-  }
-
-  function spawn(lane, preferred) {
+  function spawn(lane) {
     if (!library.length) return false;
 
     /* Одна и та же картинка не должна ехать дважды */
@@ -1372,25 +276,7 @@
 
     if (!pool.length) return false;
 
-    var item = null;
-
-    if (preferred) {
-      for (var p = 0; p < pool.length; p++) {
-        if (pool[p] === preferred) {
-          item = preferred;
-          break;
-        }
-      }
-
-      if (item) {
-        var qi = pendingQueue.indexOf(item.id);
-        if (qi !== -1) pendingQueue.splice(qi, 1);
-      }
-    }
-
-    if (!item) item = takeQueuedItem(pool);
-    if (!item) item = pool[(Math.random() * pool.length) | 0];
-
+    var item = pool[(Math.random() * pool.length) | 0];
     var sizeMul = rand(0.92, 1.08);
     var h = lane.carH * sizeMul;
     var w = h * item.aspect;
@@ -1419,40 +305,13 @@
       bounce: 0,
       bubble: 0,
       box: null,
-      flip: item.facing !== shouldFace,
-      itemId: item.id,
-      local: !!item.local
+      flip: item.facing !== shouldFace
     };
 
     car.v = car.vmax * 0.55;
     cars.push(car);
 
     return true;
-  }
-
-  /* Ставит только что загруженную машину в очередь и, если есть место,
-     сразу выпускает её на дорогу. */
-  function releaseItem(item) {
-    if (!item) return false;
-
-    if (!imgOnRoad(item.img) && pendingQueue.indexOf(item.id) === -1) {
-      pendingQueue.push(item.id);
-    }
-
-    for (var li = 0; li < lanes.length; li++) {
-      var lane = lanes[li];
-
-      if (canSpawn(lane) && spawn(lane, item)) {
-        lane.timer = Math.min(lane.timer, rand(0.3, 0.8));
-        return true;
-      }
-    }
-
-    for (var i = 0; i < lanes.length; i++) {
-      lanes[i].timer = Math.min(lanes[i].timer, 0.2);
-    }
-
-    return false;
   }
 
   function canSpawn(lane) {
@@ -2784,86 +1643,6 @@
   });
 
   /* ============================================================
-     Загрузка фото: кнопка, выбор файлов и Drag-and-Drop
-     ============================================================ */
-
-  addPhotosBtn.addEventListener("click", function () {
-    fileInput.click();
-  });
-
-  garageBtn.addEventListener("click", openGarage);
-  panelClear.addEventListener("click", clearAllLocal);
-
-  fileInput.addEventListener("change", function () {
-    var files = fileInput.files;
-    if (files && files.length) addFiles(files);
-    fileInput.value = "";
-  });
-
-  panelDone.addEventListener("click", hidePanel);
-
-  panelJuice.addEventListener("input", function () {
-    setJuice(panelJuice.value);
-  });
-
-  cropFrame.addEventListener("pointerdown", cropPointerDown);
-  cropApply.addEventListener("click", applyCrop);
-  cropCancel.addEventListener("click", closeCropModal);
-  cropCancelX.addEventListener("click", closeCropModal);
-  cropReset.addEventListener("click", resetCropFrame);
-
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && !cropModal.hidden && !cropBusy) closeCropModal();
-  });
-
-  window.addEventListener("resize", function () {
-    if (!cropModal.hidden) setTimeout(initCropStage, 150);
-  });
-
-  function hasDraggedFiles(e) {
-    var dt = e.dataTransfer;
-    if (!dt) return false;
-
-    if (dt.types) {
-      for (var i = 0; i < dt.types.length; i++) {
-        if (dt.types[i] === "Files") return true;
-      }
-    }
-
-    return false;
-  }
-
-  window.addEventListener("dragenter", function (e) {
-    if (!hasDraggedFiles(e)) return;
-
-    e.preventDefault();
-    dropOverlay.hidden = false;
-  });
-
-  window.addEventListener("dragover", function (e) {
-    e.preventDefault();
-    if (hasDraggedFiles(e)) e.dataTransfer.dropEffect = "copy";
-  });
-
-  window.addEventListener("dragleave", function (e) {
-    /* Пока курсор переходит между элементами страницы, relatedTarget
-       не пустой. Пустой — значит файл унесли из окна. */
-    if (e.relatedTarget) return;
-    dropOverlay.hidden = true;
-  });
-
-  window.addEventListener("drop", function (e) {
-    e.preventDefault();
-    dropOverlay.hidden = true;
-
-    var files = e.dataTransfer && e.dataTransfer.files;
-
-    if (files && files.length) {
-      addFiles(files);
-    }
-  });
-
-  /* ============================================================
      Управление
      ============================================================ */
 
@@ -2960,7 +1739,6 @@
      ============================================================ */
 
   resize();
-  readJuiceValue();
 
   loadLibrary(true).then(function () {
     updateHint();
@@ -2992,26 +1770,6 @@
     get lanes() { return lanes; },
     get library() { return library; },
     get plane() { return plane; },
-    get local() { return localLibrary; },
-    get pending() { return pendingQueue; },
-    get uploadState() {
-      return {
-        busy: uploadBusy,
-        total: uploadTotal,
-        done: uploadDone,
-        errors: uploadErrors,
-        juice: juiceValue
-      };
-    },
-    addFiles: addFiles,
-    setJuice: setJuice,
-    showPanel: showPanel,
-    hidePanel: hidePanel,
-    rotate: rotateLocalItem,
-    openCrop: openCropModal,
-    applyCrop: applyCrop,
-    openGarage: openGarage,
-    clearAllLocal: clearAllLocal,
     get audioState() {
       return {
         context: audio ? audio.state : "none",

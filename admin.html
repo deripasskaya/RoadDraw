@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#eef3f8">
   <title>Добавить машину — Дорога</title>
-  <link rel="stylesheet" href="admin.css?v=20261126-3">
+  <link rel="stylesheet" href="admin.css?v=20261127-1">
 </head>
 <body>
   <header class="topbar">
@@ -76,21 +76,21 @@
           <span>Убрать фон</span>
         </label>
         <label class="tol">
-          <span>Чувствительность</span>
-          <input id="tolerance" type="range" min="0" max="100" step="5" value="50">
+          <span>Чувствительность фона <b id="toleranceValue">50</b></span>
+          <input id="tolerance" type="range" min="0" max="100" step="5" value="50" aria-label="Чувствительность фона">
         </label>
         <label class="tol">
           <span>Сочность линий <b id="juiceValue">50% · авто</b></span>
           <input id="juice" type="range" min="0" max="100" step="5" value="50" aria-label="Сочность линий">
         </label>
       </div>
-      <p class="options-hint muted">Двигайте ползунки — превью обновится сразу. «Чувствительность» убирает фон, «Сочность линий» делает штрихи ярче. 50% — авто-уровень.</p>
+      <p class="options-hint muted">Двигайте ползунки — превью обновится сразу. «Чувствительность фона» помогает убрать тень и сложный фон, «Сочность линий» делает карандаш ярче. 50% — авто-уровень.</p>
 
-      <div id="list" class="list"></div>
-      <p class="list-hint muted">Нос машины на превью должен смотреть вправо. Если он смотрит влево — нажмите «Отразить».</p>
+      <div id="list" class="thumb-strip" aria-label="Выбранные фото"></div>
+      <p class="list-hint muted">Нажмите на миниатюру, чтобы отразить машину. ↻ — повернуть на 90°, ✂️ — обрезать рамкой, × — убрать из подборки.</p>
 
       <div id="actions" class="actions" hidden>
-        <button id="addBtn" class="primary big" type="button">Добавить на дорогу</button>
+        <button id="addBtn" class="primary big" type="button">Опубликовать на дороге</button>
       </div>
 
       <p id="status" class="status" role="status"></p>
@@ -99,12 +99,15 @@
     <section id="roadCard" class="card road-card">
       <div class="card-head">
         <div>
-          <h2>Дорога</h2>
-          <p class="muted">Убрать все машины сразу. Рисунки останутся в репозитории — их можно вернуть вручную.</p>
+          <h2>Сейчас на дороге</h2>
+          <p class="muted">Все опубликованные машины из cars.json. Удаление убирает запись и PNG-файл из репозитория.</p>
         </div>
+        <button id="refreshRoadBtn" class="link-btn" type="button">Обновить</button>
       </div>
-      <button id="clearRoadBtn" class="ghost danger" type="button">Очистить дорогу</button>
+      <div id="publishedList" class="published-list"></div>
       <p id="roadStatus" class="status" role="status"></p>
+      <button id="clearRoadBtn" class="ghost danger" type="button">Убрать все с дороги</button>
+      <p class="muted">Кнопка «Убрать все с дороги» очищает только cars.json. PNG-файлы остаются в репозитории.</p>
     </section>
 
     <section id="doneCard" class="card done" hidden>
@@ -121,7 +124,31 @@
     <p class="footnote">Страница никуда не ссылается с игры. Без токена она не может ничего изменить в репозитории.</p>
   </main>
 
-  <script src="image-processing.js?v=20261126-3"></script>
-  <script src="admin.js?v=20261126-3"></script>
+  <div id="cropModal" class="crop-modal" hidden>
+    <div class="crop-dialog" role="dialog" aria-modal="true" aria-labelledby="cropTitle">
+      <div class="crop-head">
+        <strong id="cropTitle">Обрезать фото</strong>
+        <button id="cropCancelX" class="crop-close" type="button" aria-label="Закрыть">×</button>
+      </div>
+      <div id="cropStage" class="crop-stage">
+        <img id="cropImage" alt="Исходное фото машины" draggable="false">
+        <div id="cropFrame" class="crop-frame" hidden>
+          <span class="crop-handle nw" data-handle="nw"></span>
+          <span class="crop-handle ne" data-handle="ne"></span>
+          <span class="crop-handle sw" data-handle="sw"></span>
+          <span class="crop-handle se" data-handle="se"></span>
+          <span class="crop-grid" aria-hidden="true"></span>
+        </div>
+      </div>
+      <div class="crop-actions">
+        <button id="cropReset" class="crop-ghost" type="button">Сбросить</button>
+        <button id="cropCancel" class="crop-ghost" type="button">Отмена</button>
+        <button id="cropApply" class="crop-primary" type="button">Применить</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="image-processing.js?v=20261127-1"></script>
+  <script src="admin.js?v=20261127-1"></script>
 </body>
 </html>
