@@ -1280,7 +1280,7 @@
       }
     }
 
-    var closeR = Math.max(3, Math.min(12, Math.round(Math.min(w, h) / 55)));
+    var closeR = Math.max(4, Math.min(20, Math.round(Math.min(w, h) / 32)));
     var closed = morphClose(ink, w, h, closeR);
     var silhouette = fillMaskHoles(closed, w, h);
     keepMainSilhouetteComponents(silhouette, w, h);
