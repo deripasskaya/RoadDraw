@@ -292,10 +292,6 @@
     });
   }
 
-  function keepAlpha(type) {
-    return /png|webp|gif|svg/i.test(type || "");
-  }
-
   function sourceDataUrl(img, type) {
     var nw = img.naturalWidth || img.width;
     var nh = img.naturalHeight || img.height;
@@ -314,7 +310,7 @@
     c.imageSmoothingQuality = "high";
     c.drawImage(img, 0, 0, w, h);
 
-    return canvas.toDataURL(keepAlpha(type) ? "image/png" : "image/jpeg", 0.92);
+    return canvas.toDataURL("image/png");
   }
 
   function rotateSourceDataUrl(src) {
@@ -331,7 +327,7 @@
       c.rotate(Math.PI / 2);
       c.drawImage(img, 0, 0);
 
-      return canvas.toDataURL(/^data:image\/(png|webp|gif)/i.test(src) ? "image/png" : "image/jpeg", 0.92);
+      return canvas.toDataURL("image/png");
     });
   }
 
@@ -357,7 +353,7 @@
       var c = canvas.getContext("2d");
       c.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
 
-      return canvas.toDataURL(/^data:image\/(png|webp|gif)/i.test(src) ? "image/png" : "image/jpeg", 0.92);
+      return canvas.toDataURL("image/png");
     });
   }
 
