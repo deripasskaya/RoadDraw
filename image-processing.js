@@ -1,12 +1,17 @@
 (function (global) {
   "use strict";
 
-  /* Модуль обработки фото для админки. Это исходный алгоритм,
-     который использовался до экспериментов с силуэтом и автообрезкой. */
+  /* Модуль обработки фото для админки.
+     Алгоритм: цвет бумаги по краям → заливка фона от краёв с мягким
+     допуском → чистка кромки (светлая кайма, точки, ореол) → «сочность». */
 
   var MAX_SIDE = 800;
   var TARGET_H = 320;
   var MAX_OUT_W = 900;
+
+  /* Цвет бумаги после нормализации освещения — нужен для очистки
+     полупрозрачной кромки от белого ореола. */
+  var lastPaperColor = [244, 244, 244];
 
   /* ============================================================
      Обработка изображения
@@ -763,6 +768,7 @@
     }
 
     normalizeLighting(px, w, h);
+    lastPaperColor = sampleCornerColor(px, w, h);
 
     var removed = removeLightBackground(px, w, h, tolPercent);
 
@@ -954,10 +960,13 @@
     return { x: x0, y: y0, w: bw, h: bh };
   }
 
-  /* Убираем светлые пиксели бумаги, прилипшие к внешнему краю рисунка. */
+  /* Светлая кайма бумаги у внешнего края рисунка плавно гаснет:
+     чистая бумага убирается сразу, загрязнённая — по мере удаления
+     от прозрачности. Без жёсткого обреза по всему контуру. */
   function trimLightEdgePixels(px, w, h, radius, lumMin, satMax) {
-    lumMin = lumMin || 205;
-    satMax = satMax || 40;
+    lumMin = lumMin || 195;
+    satMax = satMax || 45;
+    var paper = lastPaperColor;
     var total = w * h;
     var srcAlpha = new Uint8Array(total);
     var i;
@@ -969,7 +978,9 @@
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         i = y * w + x;
-        if (srcAlpha[i] < 128) continue;
+
+        var a = srcAlpha[i];
+        if (a < 16) continue;
 
         var o = i * 4;
         var r = px[o];
@@ -978,31 +989,51 @@
         var lum = luma(r, g, b);
         var sat = Math.max(r, g, b) - Math.min(r, g, b);
 
-        if (lum < lumMin || sat > satMax) continue;
+        var dr = r - paper[0];
+        var dg = g - paper[1];
+        var db = b - paper[2];
+        var dp = dr * dr + dg * dg + db * db;
 
-        var nearEdge = false;
+        var purePaper = dp < 900;
+        var paperish = dp < 3025;
 
-        for (var dy = -radius; dy <= radius && !nearEdge; dy++) {
+        if (!paperish && (lum < lumMin || sat > satMax)) continue;
+
+        var best = radius + 1;
+
+        for (var dy = -radius; dy <= radius; dy++) {
           var ny = y + dy;
 
           for (var dx = -radius; dx <= radius; dx++) {
             var nx = x + dx;
+            var d = Math.max(Math.abs(dx), Math.abs(dy));
+
+            if (d >= best) continue;
 
             if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
-              nearEdge = true;
-              break;
+              best = d;
+              continue;
             }
 
-            if (srcAlpha[ny * w + nx] < 48) {
-              nearEdge = true;
-              break;
-            }
+            if (srcAlpha[ny * w + nx] < 40) best = d;
           }
         }
 
-        if (nearEdge) {
-          px[o + 3] = 0;
-          removed++;
+        if (best > radius) continue;
+
+        var na;
+
+        if (purePaper) {
+          na = 0;
+        } else {
+          var k = (best - 1) / radius;
+          if (k < 0) k = 0;
+          na = Math.round(a * k);
+        }
+
+        if (na < a) {
+          px[o + 3] = na;
+          removed += a - na;
         }
       }
     }
@@ -1012,10 +1043,11 @@
 
   /* Полупрозрачной кромке отдаём цвет плотных штрихов рядом,
      а не белый оттенок бумаги. */
+  /* Полупрозрачная кромка — это смесь штриха и бумаги. Убираем вклад
+     бумаги, чтобы вокруг рисунка не светился белый ореол. */
   function decontaminateEdgeColors(px, w, h) {
-    var total = w * h;
     var src = new Uint8ClampedArray(px);
-    var radius = 3;
+    var paper = lastPaperColor;
 
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
@@ -1024,60 +1056,33 @@
 
         if (a === 0 || a >= 250) continue;
 
-        var sumR = 0;
-        var sumG = 0;
-        var sumB = 0;
-        var sumW = 0;
-        var inkR = 0;
-        var inkG = 0;
-        var inkB = 0;
-        var inkW = 0;
+        var cr = src[i * 4];
+        var cg = src[i * 4 + 1];
+        var cb = src[i * 4 + 2];
 
-        for (var dy = -radius; dy <= radius; dy++) {
-          var ny = y + dy;
-          if (ny < 0 || ny >= h) continue;
-
-          for (var dx = -radius; dx <= radius; dx++) {
-            var nx = x + dx;
-            if (nx < 0 || nx >= w) continue;
-
-            var ni = ny * w + nx;
-            var na = src[ni * 4 + 3];
-            if (na < 64) continue;
-
-            sumR += src[ni * 4] * na;
-            sumG += src[ni * 4 + 1] * na;
-            sumB += src[ni * 4 + 2] * na;
-            sumW += na;
-
-            var nr = src[ni * 4];
-            var ng = src[ni * 4 + 1];
-            var nb = src[ni * 4 + 2];
-            var nLum = luma(nr, ng, nb);
-            var nSat = Math.max(nr, ng, nb) - Math.min(nr, ng, nb);
-
-            if (nLum < 190 || nSat > 30) {
-              inkR = nr * na;
-              inkG = ng * na;
-              inkB = nb * na;
-              inkW = na;
-              if (na > 180) break;
-            }
-          }
-          if (inkW > 0 && inkW >= 180) break;
+        /* Совсем прозрачную светлую кромку просто убираем. */
+        if (a < 60) {
+          if (luma(cr, cg, cb) >= 195) px[i * 4 + 3] = 0;
+          continue;
         }
 
-        if (inkW > 0) {
-          px[i * 4] = inkR / inkW;
-          px[i * 4 + 1] = inkG / inkW;
-          px[i * 4 + 2] = inkB / inkW;
-        } else if (a < 250 && luma(px[i * 4], px[i * 4 + 1], px[i * 4 + 2]) >= 200) {
-          px[i * 4 + 3] = 0;
-        } else if (sumW > 0) {
-          px[i * 4] = sumR / sumW;
-          px[i * 4 + 1] = sumG / sumW;
-          px[i * 4 + 2] = sumB / sumW;
+        /* Плотный тёмный штрих бумагой не загрязнён — не трогаем. */
+        if (luma(cr, cg, cb) < 120) continue;
+
+        var af = a / 255;
+        var fR = (cr - (1 - af) * paper[0]) / af;
+        var fG = (cg - (1 - af) * paper[1]) / af;
+        var fB = (cb - (1 - af) * paper[2]) / af;
+
+        /* Если формула вышла за диапазон, оставляем исходный цвет:
+           это уже цвет штриха, а не смесь с бумагой. */
+        if (fR < 0 || fR > 255 || fG < 0 || fG > 255 || fB < 0 || fB > 255) {
+          continue;
         }
+
+        px[i * 4] = fR;
+        px[i * 4 + 1] = fG;
+        px[i * 4 + 2] = fB;
       }
     }
   }
@@ -1273,8 +1278,11 @@
        цветом соседних штрихов, чтобы не было белого ореола. */
     fillInteriorHoles(outData.data, ow, oh);
     removeSmallLightIslands(outData.data, ow, oh);
-    trimLightEdgePixels(outData.data, ow, oh, 2);
     smoothAlphaOutline(outData.data, ow, oh);
+    trimLightEdgePixels(outData.data, ow, oh, 3);
+    featherAlpha(outData.data, ow, oh, 1);
+    decontaminateEdgeColors(outData.data, ow, oh);
+    trimLightEdgePixels(outData.data, ow, oh, 2);
     featherAlpha(outData.data, ow, oh, 1);
     decontaminateEdgeColors(outData.data, ow, oh);
     octx.putImageData(outData, 0, 0);
