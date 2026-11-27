@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "file": "assets/cars/car-mwyd8ubd-1-1-29t.png",
+    "name": "Машина",
+    "facing": "right"
+  },
+  {
+    "file": "assets/cars/car-mwyd8ubd-1-2-nny.png",
+    "name": "Машина",
+    "facing": "right"
+  }
+]
