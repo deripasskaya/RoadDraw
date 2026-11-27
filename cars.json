@@ -1,1 +1,47 @@
-[]
+[
+  {
+    "file": "assets/cars/car-mwypuabm-1-1-lky.png",
+    "name": "Машина",
+    "facing": "right"
+  },
+  {
+    "file": "assets/cars/car-mwypuabm-1-2-kfj.png",
+    "name": "Машина",
+    "facing": "right"
+  },
+  {
+    "file": "assets/cars/car-mwypuabm-1-3-sqs.png",
+    "name": "Машина",
+    "facing": "right"
+  },
+  {
+    "file": "assets/cars/car-mwypuabm-1-4-wtf.png",
+    "name": "Машина",
+    "facing": "right"
+  },
+  {
+    "file": "assets/cars/car-mwypuabm-1-5-nud.png",
+    "name": "Машина",
+    "facing": "right"
+  },
+  {
+    "file": "assets/cars/car-mwypuabm-1-6-y1t.png",
+    "name": "Машина",
+    "facing": "right"
+  },
+  {
+    "file": "assets/cars/car-mwypuabm-1-7-46j.png",
+    "name": "Машина",
+    "facing": "right"
+  },
+  {
+    "file": "assets/cars/car-mwypuabm-1-8-4at.png",
+    "name": "Машина",
+    "facing": "right"
+  },
+  {
+    "file": "assets/cars/car-mwypuabm-1-9-5o5.png",
+    "name": "Машина",
+    "facing": "left"
+  }
+]
