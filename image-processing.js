@@ -879,6 +879,56 @@
     return removed > total * 0.005;
   }
 
+  /* Аккуратно сглаживаем рваные одиночные ступеньки на альфа-крае:
+     медиана 3×3 дважды, без расширения и без новых полупрозрачных пикселей. */
+  function smoothAlphaOutline(px, w, h) {
+    var total = w * h;
+    var src = new Uint8Array(total);
+    var out = new Uint8Array(total);
+    var vals = new Uint8Array(9);
+    var i;
+
+    for (i = 0; i < total; i++) src[i] = px[i * 4 + 3];
+
+    for (var pass = 0; pass < 2; pass++) {
+      for (var y = 0; y < h; y++) {
+        for (var x = 0; x < w; x++) {
+          var n = 0;
+
+          for (var dy = -1; dy <= 1; dy++) {
+            var ny = y + dy;
+
+            for (var dx = -1; dx <= 1; dx++) {
+              var nx = x + dx;
+
+              if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+                vals[n++] = 0;
+              } else {
+                vals[n++] = src[ny * w + nx];
+              }
+            }
+          }
+
+          for (var a = 0; a < 9; a++) {
+            for (var b = a + 1; b < 9; b++) {
+              if (vals[b] < vals[a]) {
+                var t = vals[a];
+                vals[a] = vals[b];
+                vals[b] = t;
+              }
+            }
+          }
+
+          out[y * w + x] = vals[4];
+        }
+      }
+
+      src.set(out);
+    }
+
+    for (i = 0; i < total; i++) px[i * 4 + 3] = src[i];
+  }
+
   function alphaBounds(px, w, h) {
     var minX = w;
     var minY = h;
@@ -983,6 +1033,7 @@
        незакрашенные места остались бы прозрачными. */
     var outData = octx.getImageData(0, 0, ow, oh);
     fillInteriorHoles(outData.data, ow, oh);
+    smoothAlphaOutline(outData.data, ow, oh);
     octx.putImageData(outData, 0, 0);
 
     var transparent = 0;

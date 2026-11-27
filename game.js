@@ -1462,12 +1462,28 @@
       h: dh
     };
 
-    /* Тень на асфальте */
+    /* Мягкая тень: широкое пятно с плавным краем + плотный контакт у колёс */
     ctx.save();
-    ctx.globalAlpha = 0.2;
+    ctx.translate(centerX, c.lane.y + 5);
+    ctx.scale(1, 0.10);
+
+    var shadowR = dw * 0.56;
+    var shade = ctx.createRadialGradient(0, 0, 0, 0, 0, shadowR);
+    shade.addColorStop(0, "rgba(0, 0, 0, 0.24)");
+    shade.addColorStop(0.55, "rgba(0, 0, 0, 0.11)");
+    shade.addColorStop(1, "rgba(0, 0, 0, 0)");
+
+    ctx.fillStyle = shade;
+    ctx.beginPath();
+    ctx.arc(0, 0, shadowR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = 0.15;
     ctx.fillStyle = "#000";
     ctx.beginPath();
-    ctx.ellipse(centerX, c.lane.y + 3, dw * 0.45, Math.max(3, dh * 0.06), 0, 0, Math.PI * 2);
+    ctx.ellipse(centerX, c.lane.y + 3, dw * 0.34, Math.max(2, dh * 0.028), 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
