@@ -1462,15 +1462,16 @@
       h: dh
     };
 
-    /* Мягкая тень: широкое пятно с плавным краем + плотный контакт у колёс */
+    /* Мягкая тень: широкое размытое пятно + мягкий контакт под колёсами */
     ctx.save();
-    ctx.translate(centerX, c.lane.y + 5);
-    ctx.scale(1, 0.10);
+    ctx.translate(centerX, c.lane.y + 1);
+    ctx.scale(1, 0.11);
 
-    var shadowR = dw * 0.56;
+    var shadowR = dw * 0.68;
     var shade = ctx.createRadialGradient(0, 0, 0, 0, 0, shadowR);
-    shade.addColorStop(0, "rgba(0, 0, 0, 0.24)");
-    shade.addColorStop(0.55, "rgba(0, 0, 0, 0.11)");
+    shade.addColorStop(0, "rgba(0, 0, 0, 0.22)");
+    shade.addColorStop(0.42, "rgba(0, 0, 0, 0.12)");
+    shade.addColorStop(0.74, "rgba(0, 0, 0, 0.04)");
     shade.addColorStop(1, "rgba(0, 0, 0, 0)");
 
     ctx.fillStyle = shade;
@@ -1480,10 +1481,18 @@
     ctx.restore();
 
     ctx.save();
-    ctx.globalAlpha = 0.15;
-    ctx.fillStyle = "#000";
+    ctx.translate(centerX, c.lane.y + 1);
+    ctx.scale(1, 0.05);
+
+    var contactR = dw * 0.4;
+    var contact = ctx.createRadialGradient(0, 0, 0, 0, 0, contactR);
+    contact.addColorStop(0, "rgba(0, 0, 0, 0.2)");
+    contact.addColorStop(0.6, "rgba(0, 0, 0, 0.08)");
+    contact.addColorStop(1, "rgba(0, 0, 0, 0)");
+
+    ctx.fillStyle = contact;
     ctx.beginPath();
-    ctx.ellipse(centerX, c.lane.y + 3, dw * 0.34, Math.max(2, dh * 0.028), 0, 0, Math.PI * 2);
+    ctx.arc(0, 0, contactR, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
