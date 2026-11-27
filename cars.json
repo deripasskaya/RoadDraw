@@ -98,5 +98,10 @@
     "file": "assets/cars/car-mwyqe9e2-1-1-sfe.png",
     "name": "Машина",
     "facing": "left"
+  },
+  {
+    "file": "assets/cars/car-mwyqq24p-1-1-gwt.png",
+    "name": "Машина",
+    "facing": "left"
   }
 ]
