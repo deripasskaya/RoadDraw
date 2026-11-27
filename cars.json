@@ -1,1 +1,22 @@
-[]
+[
+  {
+    "file": "assets/cars/car-mwydxr8g-1-1-0if.png",
+    "name": "Машина",
+    "facing": "left"
+  },
+  {
+    "file": "assets/cars/car-mwydxr8g-1-2-m7b.png",
+    "name": "Машина",
+    "facing": "right"
+  },
+  {
+    "file": "assets/cars/car-mwydxr8g-1-3-hg7.png",
+    "name": "Машина",
+    "facing": "left"
+  },
+  {
+    "file": "assets/cars/car-mwydxr8g-1-4-uiq.png",
+    "name": "Машина",
+    "facing": "right"
+  }
+]
