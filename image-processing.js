@@ -338,78 +338,6 @@
     }
   }
 
-  /* Маска штрихов: Собель по нормализованной яркости + локальный контраст.
-     Тень на бумаге плавная, а карандаш даёт резкий перепад и тёмную сторону. */
-  function buildStrokeMask(px, w, h) {
-    var total = w * h;
-    var lum = new Float32Array(total);
-    var i;
-
-    for (i = 0; i < total; i++) {
-      var o = i * 4;
-      lum[i] = luma(px[o], px[o + 1], px[o + 2]);
-    }
-
-    var edge = new Uint8Array(total);
-    var edgeThresh = 55;
-    var x, y;
-
-    for (y = 1; y < h - 1; y++) {
-      for (x = 1; x < w - 1; x++) {
-        i = y * w + x;
-
-        var gx =
-          -lum[i - w - 1] + lum[i - w + 1] -
-          2 * lum[i - 1] + 2 * lum[i + 1] -
-          lum[i + w - 1] + lum[i + w + 1];
-
-        var gy =
-          -lum[i - w - 1] - 2 * lum[i - w] - lum[i - w + 1] +
-          lum[i + w - 1] + 2 * lum[i + w] + lum[i + w + 1];
-
-        if (Math.abs(gx) + Math.abs(gy) <= edgeThresh) continue;
-
-        /* Отсекаем светлую текстуру бумаги: у штриха есть тёмная сторона */
-        var mn = 255;
-        var mx = 0;
-
-        for (var dy = -1; dy <= 1; dy++) {
-          for (var dx = -1; dx <= 1; dx++) {
-            var v = lum[(y + dy) * w + (x + dx)];
-            if (v < mn) mn = v;
-            if (v > mx) mx = v;
-          }
-        }
-
-        if (mx - mn < 18) continue;
-        if (mn > 232) continue;
-
-        edge[i] = 1;
-      }
-    }
-
-    /* Убираем одиночные пиксели шума, оставляем линии */
-    var protect = new Uint8Array(total);
-
-    for (y = 1; y < h - 1; y++) {
-      for (x = 1; x < w - 1; x++) {
-        i = y * w + x;
-        if (!edge[i]) continue;
-
-        var count = 0;
-        for (var dy2 = -1; dy2 <= 1; dy2++) {
-          for (var dx2 = -1; dx2 <= 1; dx2++) {
-            if (dx2 || dy2) count += edge[(y + dy2) * w + (x + dx2)];
-          }
-        }
-
-        if (count >= 2) protect[i] = 1;
-      }
-    }
-
-    return protect;
-  }
-
   /* Мягкое уплотнение: Multiply с размытой копией (radius 1–2 px).
      Работает только по непрозрачным пикселям, альфа не меняется. */
   function blurMultiply(px, w, h, strength) {
@@ -628,60 +556,55 @@
     }
   }
 
-  /* Удаляем светлый малонасыщенный фон, связанный с краями.
-     Штрихи (protect) и их расширенная маска (guard) не дают
-     заливке протечь внутрь кузова через тонкие линии. */
-  function removeLightBackground(px, w, h, tolPercent, protect) {
+  /* Простой и предсказуемый способ: находим цвет бумаги по краям кадра,
+     заливаем от краёв всё похожее на бумагу и оставляем только рисунок. */
+  function removeLightBackground(px, w, h, tolPercent) {
     var total = w * h;
     var bg = sampleCornerColor(px, w, h);
     var slider = Math.max(0, Math.min(100, tolPercent));
 
-    var lThresh = 210 - slider * 0.55;
-    var satThresh = 7 + slider * 0.07;
-    var tol = 35 + slider * 1.0;
+    /* Чем выше «Чувствительность», тем шире допуск к цвету бумаги. */
+    var tol = 24 + slider * 1.05;
     var tol2 = tol * tol;
+    var lumFloor = 198 - slider * 0.55;
+    var satMax = 9 + slider * 0.09;
 
     var bgLike = new Uint8Array(total);
     var wasClear = new Uint8Array(total);
-    var i;
+    var i, o, r, g, b;
 
     for (i = 0; i < total; i++) {
-      if (px[i * 4 + 3] < 16) wasClear[i] = 1;
-    }
-
-    for (i = 0; i < total; i++) {
-      var o = i * 4;
-      if (wasClear[i]) {
+      if (px[i * 4 + 3] < 16) {
+        wasClear[i] = 1;
         bgLike[i] = 1;
         continue;
       }
 
-      var r = px[o];
-      var g = px[o + 1];
-      var b = px[o + 2];
-      var mx = Math.max(r, g, b);
-      var mn = Math.min(r, g, b);
+      o = i * 4;
+      r = px[o];
+      g = px[o + 1];
+      b = px[o + 2];
 
-      if (luma(r, g, b) < lThresh) continue;
-      if (mx - mn > satThresh) continue;
+      if (luma(r, g, b) < lumFloor) continue;
+      if (Math.max(r, g, b) - Math.min(r, g, b) > satMax) continue;
 
       var dr = r - bg[0];
       var dg = g - bg[1];
       var db = b - bg[2];
+
       if (dr * dr + dg * dg + db * db > tol2) continue;
 
       bgLike[i] = 1;
     }
 
-    var radius = Math.max(2, Math.min(3, Math.round(Math.min(w, h) / 350)));
-    var guard = morphDilate(protect, w, h, radius);
-
+    /* Заливка только от внешнего края: внутренние белые области
+       (кузов, стекло) остаются нетронутыми, если обводка замкнута. */
     var outside = new Uint8Array(total);
     var stack = new Int32Array(total);
     var sp = 0;
 
     function push(idx) {
-      if (outside[idx] || !bgLike[idx] || guard[idx]) return;
+      if (outside[idx] || !bgLike[idx]) return;
       outside[idx] = 1;
       stack[sp++] = idx;
     }
@@ -708,45 +631,15 @@
     }
 
     var removed = 0;
+
     for (i = 0; i < total; i++) {
       if (outside[i]) removed++;
-    }
-
-    /* Съедаем светлую кайму вокруг штрихов, сами штрихи не трогаем */
-    for (var pass = 0; pass < radius + 1; pass++) {
-      var add = [];
-
-      for (var y2 = 0; y2 < h; y2++) {
-        for (var x2 = 0; x2 < w; x2++) {
-          var i2 = y2 * w + x2;
-          if (outside[i2] || !bgLike[i2] || protect[i2]) continue;
-
-          var near =
-            (x2 > 0 && outside[i2 - 1]) ||
-            (x2 < w - 1 && outside[i2 + 1]) ||
-            (y2 > 0 && outside[i2 - w]) ||
-            (y2 < h - 1 && outside[i2 + w]);
-
-          if (near) add.push(i2);
-        }
-      }
-
-      for (i = 0; i < add.length; i++) outside[add[i]] = 1;
-      removed += add.length;
-    }
-
-    for (i = 0; i < total; i++) {
       px[i * 4 + 3] = (outside[i] || wasClear[i]) ? 0 : 255;
-    }
-
-    featherAlpha(px, w, h, Math.max(1, Math.round(Math.min(w, h) / 400)));
-
-    for (i = 0; i < total; i++) {
-      if (wasClear[i]) px[i * 4 + 3] = 0;
     }
 
     return removed;
   }
+
 
   /* Расширяем непрозрачные участки на r пикселей во все стороны */
   function morphDilate(src, w, h, r) {
@@ -871,10 +764,11 @@
 
     normalizeLighting(px, w, h);
 
-    var protect = buildStrokeMask(px, w, h);
-    var removed = removeLightBackground(px, w, h, tolPercent, protect);
+    var removed = removeLightBackground(px, w, h, tolPercent);
 
     autoTune(px, w, h, juicePercent);
+    featherAlpha(px, w, h, 1);
+    decontaminateEdgeColors(px, w, h);
 
     return removed > total * 0.005;
   }
@@ -929,6 +823,12 @@
     for (i = 0; i < total; i++) px[i * 4 + 3] = src[i];
   }
 
+  /* Одна простая операция закрытия контура: не даёт белому кузову
+     провалиться в фон через разрывы обводки. */
+
+
+
+
   function alphaBounds(px, w, h) {
     var minX = w;
     var minY = h;
@@ -949,6 +849,316 @@
 
     if (maxX < 0) return null;
     return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+  }
+
+  function paperPixel(r, g, b) {
+    var mx = Math.max(r, g, b);
+    var mn = Math.min(r, g, b);
+    return luma(r, g, b) >= 126 && mx - mn <= 66;
+  }
+
+  function longestPaperRun(frac, threshold) {
+    var bestStart = 0;
+    var bestLen = 0;
+    var start = -1;
+
+    for (var i = 0; i < frac.length; i++) {
+      if (frac[i] >= threshold) {
+        if (start < 0) start = i;
+        var len = i - start + 1;
+        if (len > bestLen) {
+          bestLen = len;
+          bestStart = start;
+        }
+      } else {
+        start = -1;
+      }
+    }
+
+    if (!bestLen) return null;
+    return { start: bestStart, end: bestStart + bestLen - 1 };
+  }
+
+  function detectPaperBounds(px, w, h) {
+    var step = Math.max(2, Math.round(Math.max(w, h) / 170));
+    var cols = Math.ceil(w / step);
+    var rows = Math.ceil(h / step);
+    var rowHits = new Uint32Array(rows);
+    var rowTot = new Uint32Array(rows);
+    var colHits = new Uint32Array(cols);
+    var colTot = new Uint32Array(cols);
+    var x, y;
+
+    for (y = 0; y < h; y += step) {
+      var ry = (y / step) | 0;
+
+      for (x = 0; x < w; x += step) {
+        var cx = (x / step) | 0;
+        var o = (y * w + x) * 4;
+
+        rowTot[ry]++;
+        colTot[cx]++;
+
+        if (paperPixel(px[o], px[o + 1], px[o + 2])) {
+          rowHits[ry]++;
+          colHits[cx]++;
+        }
+      }
+    }
+
+    var rowFrac = new Float32Array(rows);
+    var colFrac = new Float32Array(cols);
+    var rowMax = 0;
+    var colMax = 0;
+
+    for (var i = 0; i < rows; i++) {
+      rowFrac[i] = rowTot[i] ? rowHits[i] / rowTot[i] : 0;
+      if (rowFrac[i] > rowMax) rowMax = rowFrac[i];
+    }
+
+    for (var j = 0; j < cols; j++) {
+      colFrac[j] = colTot[j] ? colHits[j] / colTot[j] : 0;
+      if (colFrac[j] > colMax) colMax = colFrac[j];
+    }
+
+    var rowRun = longestPaperRun(rowFrac, Math.max(0.1, rowMax * 0.18));
+    var colRun = longestPaperRun(colFrac, Math.max(0.1, colMax * 0.18));
+
+    if (!rowRun || !colRun) return null;
+
+    var x0 = colRun.start * step;
+    var y0 = rowRun.start * step;
+    var x1 = Math.min(w, (colRun.end + 1) * step);
+    var y1 = Math.min(h, (rowRun.end + 1) * step);
+
+    if ((x1 - x0) * (y1 - y0) < w * h * 0.08) return null;
+    if (x0 < 2 && y0 < 2 && w - x1 < 2 && h - y1 < 2) return null;
+
+    var inset = Math.max(1, Math.round(Math.min(x1 - x0, y1 - y0) * 0.015));
+
+    x0 += inset;
+    y0 += inset;
+    x1 -= inset;
+    y1 -= inset;
+
+    x0 = Math.max(0, x0);
+    y0 = Math.max(0, y0);
+    x1 = Math.min(w, x1);
+    y1 = Math.min(h, y1);
+
+    var bw = x1 - x0;
+    var bh = y1 - y0;
+
+    if (bw < 2 || bh < 2) return null;
+
+    return { x: x0, y: y0, w: bw, h: bh };
+  }
+
+  /* Убираем светлые пиксели бумаги, прилипшие к внешнему краю рисунка. */
+  function trimLightEdgePixels(px, w, h, radius, lumMin, satMax) {
+    lumMin = lumMin || 205;
+    satMax = satMax || 40;
+    var total = w * h;
+    var srcAlpha = new Uint8Array(total);
+    var i;
+
+    for (i = 0; i < total; i++) srcAlpha[i] = px[i * 4 + 3];
+
+    var removed = 0;
+
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        i = y * w + x;
+        if (srcAlpha[i] < 128) continue;
+
+        var o = i * 4;
+        var r = px[o];
+        var g = px[o + 1];
+        var b = px[o + 2];
+        var lum = luma(r, g, b);
+        var sat = Math.max(r, g, b) - Math.min(r, g, b);
+
+        if (lum < lumMin || sat > satMax) continue;
+
+        var nearEdge = false;
+
+        for (var dy = -radius; dy <= radius && !nearEdge; dy++) {
+          var ny = y + dy;
+
+          for (var dx = -radius; dx <= radius; dx++) {
+            var nx = x + dx;
+
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+              nearEdge = true;
+              break;
+            }
+
+            if (srcAlpha[ny * w + nx] < 48) {
+              nearEdge = true;
+              break;
+            }
+          }
+        }
+
+        if (nearEdge) {
+          px[o + 3] = 0;
+          removed++;
+        }
+      }
+    }
+
+    return removed;
+  }
+
+  /* Полупрозрачной кромке отдаём цвет плотных штрихов рядом,
+     а не белый оттенок бумаги. */
+  function decontaminateEdgeColors(px, w, h) {
+    var total = w * h;
+    var src = new Uint8ClampedArray(px);
+    var radius = 3;
+
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        var i = y * w + x;
+        var a = src[i * 4 + 3];
+
+        if (a === 0 || a >= 250) continue;
+
+        var sumR = 0;
+        var sumG = 0;
+        var sumB = 0;
+        var sumW = 0;
+        var inkR = 0;
+        var inkG = 0;
+        var inkB = 0;
+        var inkW = 0;
+
+        for (var dy = -radius; dy <= radius; dy++) {
+          var ny = y + dy;
+          if (ny < 0 || ny >= h) continue;
+
+          for (var dx = -radius; dx <= radius; dx++) {
+            var nx = x + dx;
+            if (nx < 0 || nx >= w) continue;
+
+            var ni = ny * w + nx;
+            var na = src[ni * 4 + 3];
+            if (na < 64) continue;
+
+            sumR += src[ni * 4] * na;
+            sumG += src[ni * 4 + 1] * na;
+            sumB += src[ni * 4 + 2] * na;
+            sumW += na;
+
+            var nr = src[ni * 4];
+            var ng = src[ni * 4 + 1];
+            var nb = src[ni * 4 + 2];
+            var nLum = luma(nr, ng, nb);
+            var nSat = Math.max(nr, ng, nb) - Math.min(nr, ng, nb);
+
+            if (nLum < 190 || nSat > 30) {
+              inkR = nr * na;
+              inkG = ng * na;
+              inkB = nb * na;
+              inkW = na;
+              if (na > 180) break;
+            }
+          }
+          if (inkW > 0 && inkW >= 180) break;
+        }
+
+        if (inkW > 0) {
+          px[i * 4] = inkR / inkW;
+          px[i * 4 + 1] = inkG / inkW;
+          px[i * 4 + 2] = inkB / inkW;
+        } else if (a < 250 && luma(px[i * 4], px[i * 4 + 1], px[i * 4 + 2]) >= 200) {
+          px[i * 4 + 3] = 0;
+        } else if (sumW > 0) {
+          px[i * 4] = sumR / sumW;
+          px[i * 4 + 1] = sumG / sumW;
+          px[i * 4 + 2] = sumB / sumW;
+        }
+      }
+    }
+  }
+
+  /* Мелкие светлые островки пыли и бумажных точек (меньше 80 px). */
+  function removeSmallLightIslands(px, w, h) {
+    var total = w * h;
+    var seen = new Uint8Array(total);
+    var stack = new Int32Array(total);
+    var comp = [];
+    var removed = 0;
+
+    for (var start = 0; start < total; start++) {
+      if (seen[start] || px[start * 4 + 3] < 16) continue;
+
+      var sp = 0;
+      stack[sp++] = start;
+      seen[start] = 1;
+      comp.length = 0;
+
+      var area = 0;
+      var light = 0;
+
+      while (sp > 0) {
+        var idx = stack[--sp];
+        var x = idx % w;
+        var y = (idx / w) | 0;
+
+        comp.push(idx);
+        area++;
+
+        var o = idx * 4;
+        var r = px[o];
+        var g = px[o + 1];
+        var b = px[o + 2];
+        var lum = luma(r, g, b);
+        var sat = Math.max(r, g, b) - Math.min(r, g, b);
+
+        if (lum >= 125 && sat <= 70) light++;
+
+        if (x > 0) {
+          var ni = idx - 1;
+          if (!seen[ni] && px[ni * 4 + 3] >= 16) {
+            seen[ni] = 1;
+            stack[sp++] = ni;
+          }
+        }
+        if (x < w - 1) {
+          var ni2 = idx + 1;
+          if (!seen[ni2] && px[ni2 * 4 + 3] >= 16) {
+            seen[ni2] = 1;
+            stack[sp++] = ni2;
+          }
+        }
+        if (y > 0) {
+          var ni3 = idx - w;
+          if (!seen[ni3] && px[ni3 * 4 + 3] >= 16) {
+            seen[ni3] = 1;
+            stack[sp++] = ni3;
+          }
+        }
+        if (y < h - 1) {
+          var ni4 = idx + w;
+          if (!seen[ni4] && px[ni4 * 4 + 3] >= 16) {
+            seen[ni4] = 1;
+            stack[sp++] = ni4;
+          }
+        }
+      }
+
+      var lightRatio = area ? light / area : 0;
+
+      if (area < 80 && lightRatio >= 0.5) {
+        for (var k = 0; k < comp.length; k++) {
+          px[comp[k] * 4 + 3] = 0;
+        }
+        removed += area;
+      }
+    }
+
+    return removed;
   }
 
   function processPhoto(img, removeBg, tolPercent, juicePercent) {
@@ -978,6 +1188,32 @@
     var warning = "";
 
     if (removeBg) {
+      var clearCount = 0;
+      for (var ci = 3; ci < px.length; ci += 4) {
+        if (px[ci] < 16) clearCount++;
+      }
+
+      /* Сначала убираем стол по краям кадра: работаем только с бумагой. */
+      if (clearCount < w * h * 0.02) {
+        var paper = detectPaperBounds(px, w, h);
+
+        if (paper) {
+          var paperCanvas = document.createElement("canvas");
+          paperCanvas.width = paper.w;
+          paperCanvas.height = paper.h;
+
+          var pc = paperCanvas.getContext("2d", { willReadFrequently: true });
+          pc.drawImage(canvas, paper.x, paper.y, paper.w, paper.h, 0, 0, paper.w, paper.h);
+
+          data = pc.getImageData(0, 0, paper.w, paper.h);
+          px = data.data;
+          canvas = paperCanvas;
+          c = pc;
+          w = paper.w;
+          h = paper.h;
+        }
+      }
+
       var ok = removeBackground(px, w, h, tolPercent, juicePercent);
       if (!ok) {
         warning = "Не удалось отделить фон. Сфотографируйте рисунок на однотонном листе покрупнее.";
@@ -1032,8 +1268,15 @@
        при уменьшении тонкие разрывы обводки могут сомкнуться, и тогда
        незакрашенные места остались бы прозрачными. */
     var outData = octx.getImageData(0, 0, ow, oh);
+    /* Финальная чистка кромки: убираем прилипшие светлые пиксели бумаги,
+       затем мягко сглаживаем альфу и подкрашиваем полупрозрачный край
+       цветом соседних штрихов, чтобы не было белого ореола. */
     fillInteriorHoles(outData.data, ow, oh);
+    removeSmallLightIslands(outData.data, ow, oh);
+    trimLightEdgePixels(outData.data, ow, oh, 2);
     smoothAlphaOutline(outData.data, ow, oh);
+    featherAlpha(outData.data, ow, oh, 1);
+    decontaminateEdgeColors(outData.data, ow, oh);
     octx.putImageData(outData, 0, 0);
 
     var transparent = 0;
