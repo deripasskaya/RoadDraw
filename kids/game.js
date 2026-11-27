@@ -134,6 +134,31 @@
     c.sprite = canvas;
     c.spriteW = sw / dpr;
     c.spriteH = sh / dpr;
+
+    /* Насколько низ машины на самом деле прозрачный: тень нужно ставить
+       по видимому низу колёс, иначе машина «летит» над дорогой. */
+    var groundRow = sh - 1;
+
+    try {
+      var sd = sctx.getImageData(0, 0, sw, sh).data;
+
+      for (var gy = sh - 1; gy >= 0; gy--) {
+        var gn = 0;
+
+        for (var gx = 0; gx < sw; gx++) {
+          if (sd[(gy * sw + gx) * 4 + 3] > 64) gn++;
+        }
+
+        if (gn / sw > 0.18) {
+          groundRow = gy;
+          break;
+        }
+      }
+    } catch (e) {
+      groundRow = sh - 1 - Math.round(sh * 0.08);
+    }
+
+    c.groundPad = Math.max(0, Math.min(0.24, (sh - 1 - groundRow) / sh));
   }
 
   function resize() {
@@ -1462,16 +1487,19 @@
       h: dh
     };
 
-    /* Мягкая тень: широкое размытое пятно + мягкий контакт под колёсами */
-    ctx.save();
-    ctx.translate(centerX, c.lane.y + 1);
-    ctx.scale(1, 0.11);
+    /* Мягкая тень: широкое размытое пятно + мягкий контакт под колёсами.
+       groundY совпадает с видимым низом машины, а не с краем спрайта. */
+    var groundY = c.lane.y + 1 - dh * (c.groundPad || 0);
 
-    var shadowR = dw * 0.68;
+    ctx.save();
+    ctx.translate(centerX, groundY);
+    ctx.scale(1, 0.15);
+
+    var shadowR = dw * 0.7;
     var shade = ctx.createRadialGradient(0, 0, 0, 0, 0, shadowR);
-    shade.addColorStop(0, "rgba(0, 0, 0, 0.22)");
-    shade.addColorStop(0.42, "rgba(0, 0, 0, 0.12)");
-    shade.addColorStop(0.74, "rgba(0, 0, 0, 0.04)");
+    shade.addColorStop(0, "rgba(0, 0, 0, 0.42)");
+    shade.addColorStop(0.42, "rgba(0, 0, 0, 0.26)");
+    shade.addColorStop(0.74, "rgba(0, 0, 0, 0.11)");
     shade.addColorStop(1, "rgba(0, 0, 0, 0)");
 
     ctx.fillStyle = shade;
@@ -1481,13 +1509,13 @@
     ctx.restore();
 
     ctx.save();
-    ctx.translate(centerX, c.lane.y + 1);
-    ctx.scale(1, 0.05);
+    ctx.translate(centerX, groundY);
+    ctx.scale(1, 0.07);
 
-    var contactR = dw * 0.4;
+    var contactR = dw * 0.44;
     var contact = ctx.createRadialGradient(0, 0, 0, 0, 0, contactR);
-    contact.addColorStop(0, "rgba(0, 0, 0, 0.2)");
-    contact.addColorStop(0.6, "rgba(0, 0, 0, 0.08)");
+    contact.addColorStop(0, "rgba(0, 0, 0, 0.46)");
+    contact.addColorStop(0.6, "rgba(0, 0, 0, 0.18)");
     contact.addColorStop(1, "rgba(0, 0, 0, 0)");
 
     ctx.fillStyle = contact;
