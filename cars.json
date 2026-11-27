@@ -3,5 +3,10 @@
     "file": "assets/cars/car-mwynu4kk-1-1-kri.png",
     "name": "Машина",
     "facing": "right"
+  },
+  {
+    "file": "assets/cars/car-mwynwzif-1-1-16q.png",
+    "name": "Машина",
+    "facing": "right"
   }
 ]
