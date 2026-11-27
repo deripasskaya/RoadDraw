@@ -1365,7 +1365,8 @@
     if (n <= 0.02) return;
 
     var baseline = c.box.y + c.box.h;
-    var frontX = c.dir === 1 ? c.box.x + c.box.w - 2 : c.box.x + 2;
+    var inset = c.box.w * 0.12;
+    var frontX = c.dir === 1 ? c.box.x + c.box.w - inset : c.box.x + inset;
     var hy = baseline - c.box.h * 0.38;
     var r = Math.max(8, c.box.h * 0.16);
 
